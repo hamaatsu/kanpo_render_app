@@ -34,44 +34,42 @@ def make_constitution_text(pattern):
     jk = pattern["八綱"]
     qxs = pattern["気血水"]
     parts = []
-    # 実虚
     if jk["実虚"] == "kyo":
-        parts.append("体力・エネルギーがやや不足しやすい（虚証）傾向があります。無理より“補う”戦略が合います。")
+        parts.append("体力・エネルギーがやや不足しやすい（虚証）傾向。無理より“補う”戦略が合います。")
     elif jk["実虚"] == "jitsu":
-        parts.append("停滞や張りが出やすい（実証）傾向があります。巡らせて余分は捌く戦略が合います。")
-    # 寒熱
+        parts.append("停滞や張りが出やすい（実証）傾向。巡らせて余分は捌く戦略が合います。")
     if jk["寒熱"] == "kan":
-        parts.append("冷えがベースにあり、温めると楽になりやすい体質です。")
+        parts.append("冷えがベースにあり、温めると楽になりやすい体質。")
     elif jk["寒熱"] == "netsu":
-        parts.append("熱がこもりやすく、口渇やほてりが出やすい体質です。")
-    # 気
+        parts.append("熱がこもりやすく、口渇やほてりが出やすい体質。")
     if qxs["気"] == "deficiency":
-        parts.append("気虚（エネルギー不足）のサインがあり、だるさ・息切れ・食後の眠気が出やすいタイプです。")
+        parts.append("気虚（エネルギー不足）のサイン：だるさ・息切れ・食後の眠気が出やすい。")
     elif qxs["気"] == "stagnation":
-        parts.append("気滞（ストレス停滞）のサインがあり、張る・ため息・PMSなどが出やすいタイプです。")
+        parts.append("気滞（ストレス停滞）のサイン：張る・ため息・PMSなどが出やすい。")
     elif qxs["気"] == "rebellion":
-        parts.append("気逆（上逆）のサインがあり、のぼせ・げっぷ・逆流などが出やすいタイプです。")
-    # 血
+        parts.append("気逆（上逆）のサイン：のぼせ・げっぷ・逆流などが出やすい。")
     if qxs["血"] == "deficiency":
-        parts.append("血虚の傾向があり、乾燥・めまい・不眠、月経量少などが出やすいです。")
+        parts.append("血虚の傾向：乾燥・めまい・不眠、月経量少が出やすい。")
     elif qxs["血"] == "stasis":
-        parts.append("瘀血の傾向があり、刺す痛みや月経痛、しこり、暗紫舌などに注意します。")
-    # 水
+        parts.append("瘀血の傾向：刺す痛み・月経痛・しこり・暗紫舌に注意。")
     if qxs["水"] == "retention":
-        parts.append("水滞/痰湿の傾向があり、むくみ・頭重・雨天悪化・軟便などが出やすいです。")
+        parts.append("水滞/痰湿の傾向：むくみ・頭重・雨天悪化・軟便が出やすい。")
     elif qxs["水"] == "deficiency":
-        parts.append("津液不足の傾向があり、口や皮膚の乾燥、便秘気味が出やすいです。")
+        parts.append("津液不足の傾向：口や皮膚の乾燥、便秘気味が出やすい。")
     if not parts:
         parts.append("大きな偏りは少なく、生活リズムを整えるだけでも改善が見込めます。")
     return " ".join(parts)
 
 def score_and_choose(form):
+    # read axes from hidden
     jitsu_kyo = form.get("jitsu_kyo","")
     kan_netsu = form.get("kan_netsu","")
     hyo_ri = form.get("hyo_ri","")
     qi = form.get("qi","normal")
     xue = form.get("xue","normal")
     sui = form.get("sui","normal")
+    sex = form.get("sex","")
+    # vis
     pulse_strength = form.get("pulse_strength","")
     pulse_rate = form.get("pulse_rate","")
     pulse_quality = form.get("pulse_quality","")
@@ -106,6 +104,7 @@ def score_and_choose(form):
     if sui == "deficiency":
         formulas["竹葉石膏湯"] += 1
 
+    # vis adjustments
     if pulse_strength == "weak": formulas["補中益気湯"] += 1
     if pulse_rate == "rapid": formulas["竹葉石膏湯"] += 1
     if pulse_quality == "wiry": formulas["逍遙散"] += 1
@@ -117,7 +116,7 @@ def score_and_choose(form):
 
     chosen, score = max(formulas.items(), key=lambda x: x[1])
     scripts = {
-        "補中益気湯":{"explain":"体のエネルギー（気）を補い、だるさや食欲低下を立て直します。","lifestyle":"朝は温かい汁物やお粥を少量でも。冷飲と夜更かしは控えめに。","watch":"のぼせや動悸、発疹が出たら中止して相談。2〜4週で評価。"},
+        "補中益気湯":{"explain":"体のエネルギー（気）を補い、だるさや食欲低下を立て直します。","lifestyle":"朝は温かい汁物やお粥を少量でも。冷飲と夜更しは控えめに。","watch":"のぼせや動悸、発疹が出たら中止して相談。2〜4週で評価。"},
         "六君子湯":{"explain":"胃腸の働きを助け、気を補います。食後のもたれや軟便傾向に。","lifestyle":"温かく消化のよい食事。生もの・冷飲・甘味の摂り過ぎは控えめに。","watch":"腹痛や下痢が強まる場合は中止して相談。2〜3週で評価。"},
         "人参湯":{"explain":"お腹を内側から温め、胃腸機能を支えます。冷えでお腹を壊しやすい方に。","lifestyle":"常温〜温かい飲み物。下腹と足首を冷やさない。","watch":"発熱・のぼせが強い時は合わないことがあります。"},
         "真武湯":{"explain":"体を温めて水の巡りを整えます。冷え・むくみ・軟便やめまいに。","lifestyle":"冷飲を控え、ぬるめの入浴や腹巻きで下腹部を温める。","watch":"便秘や口渇が強い時は別処方が合う場合あり。"},
@@ -127,6 +126,15 @@ def score_and_choose(form):
         "桂枝茯苓丸":{"explain":"血の滞りをさばきます。下腹部の張り・月経痛・しこり・肩こりに。","lifestyle":"体を冷やさない・適度な運動で巡りを助ける。","watch":"妊娠中は原則用いません。出血傾向は医師に相談。"},
         "竹葉石膏湯":{"explain":"熱をさましつつ消耗を補います。ほてり・口渇・だるさが同時にある時に。","lifestyle":"水分はこまめに。辛味の強い香辛料は控えめに。","watch":"冷えが強い日は合いにくいことがあります。"}
     }
+    # 男性の場合、月経関連表現を除去・言い換え
+    if sex == "male":
+        if "当帰芍薬散" in scripts:
+            scripts["当帰芍薬散"]["explain"] = "血を養い水の滞りをさばきます。冷え・ふらつき・むくみ・めまい傾向に。"
+        if "逍遙散" in scripts:
+            scripts["逍遙散"]["explain"] = "気の巡りを良くし、ストレス由来の張りや情緒の波を和らげます。"
+        if "桂枝茯苓丸" in scripts:
+            scripts["桂枝茯苓丸"]["explain"] = "血の滞りをさばきます。下腹部の張り・肩こり・固定痛に。"
+
     pattern = {
         "八綱":{"実虚":jitsu_kyo,"寒熱":kan_netsu,"表裏":hyo_ri},
         "気血水":{"気":qi,"血":xue,"水":sui},
@@ -140,7 +148,7 @@ def score_and_choose(form):
             "寒熱感（冷え・ほてり）と時間帯差",
             "食欲・消化（食後のもたれ/便通/ガス）",
             "睡眠（入眠/中途覚醒/夢の多さ）",
-            "女性：月経周期/関連症状",
+            "（女性のみ）月経周期/関連症状",
             "ストレス・運動・飲酒・カフェイン"
         ],
         "視るポイント":["顔色（蒼白/紅/黄/暗）","舌（色/体/苔/湿）","脈（力/速さ/性状）","下腹・四肢の冷え/むくみ"],
