@@ -30,7 +30,7 @@ def requires_auth(f):
     def decorated(*args, **kwargs):
         auth = request.authorization
         if not auth or not check_auth(auth.username, auth.password):
-            return Response("Auth required", 401, {"WWW-Authenticate": 'Basic realm=\"Restricted\"'} )
+            return Response("Auth required", 401, {"WWW-Authenticate": 'Basic realm="Restricted"'} )
         return f(*args, **kwargs)
     return decorated
 
@@ -117,20 +117,16 @@ def diet_and_lifestyle(qi, xue, sui, jk, sex):
     if jk=="netsu":
         food += ["豆腐","緑豆","セロリ","きゅうり（夏）","大根","麦茶"]
         life += ["辛味・アルコール過多を控える","こまめに水分補給"]
-    # unique
     food = list(dict.fromkeys(food)); life = list(dict.fromkeys(life)); topics = list(dict.fromkeys(topics))
     return food, life, topics
 
 def parse_chief(ch):
     s = (ch or "").strip()
-    s2 = s.lower()
-    # 抽出：部位・性質・状況
     parts = {
         "area":{"head":0,"throat":0,"abdomen":0,"stomach":0,"chest":0},
         "nature":{"pain":0,"stuck":0,"diarrhea":0,"constipation":0,"nausea":0,"bloat":0,"dizzy":0},
         "context":{"rain":0,"meal":0,"meat":0,"cold_drink":0,"night":0,"stress":0}
     }
-    # 日本語
     if "頭" in s: parts["area"]["head"]+=1
     if "喉" in s or "のど" in s: parts["area"]["throat"]+=1
     if "腹" in s or "お腹" in s: parts["area"]["abdomen"]+=1
@@ -153,8 +149,6 @@ def parse_chief(ch):
 
 def chief_to_advice(ch, sex):
     meta = parse_chief(ch)
-    # precise matching
-    # 喉詰まり（雨/湿×気滞）
     if meta["area"]["throat"]>0 and meta["nature"]["stuck"]>0:
         ctx = "雨天で悪化" if meta["context"]["rain"]>0 else ""
         advice = {
@@ -165,12 +159,10 @@ def chief_to_advice(ch, sex):
             "foods_avoid": ["冷たい飲み物","油っこい食事","乳製品多め"],
             "lifestyle": ["湿度を上げすぎない/除湿を活用","スマホ前屈を減らす（頸部の圧迫軽減）","気分転換の散歩"],
             "points": ["合谷","列缺","天突"],
-            "careful": ["呼吸困難/嚥下困難/発熱を伴う場合は受診を優先"]
+            "careful": ["呼吸困難/嚥下困難/発熱を伴う場合は受診を優先"],
+            "kampo_hint": "半夏厚朴湯：気の巡りと痰を整え、咽喉の異物感に用いられることがあります。"
         }
-        # 漢方のヒント
-        advice["kampo_hint"] = "半夏厚朴湯：気の巡りと痰を整え、咽喉の異物感に用いられることがあります。"
         return advice
-    # 雨×頭痛（湿×気滞）
     if meta["area"]["head"]>0 and meta["nature"]["pain"]>0 and meta["context"]["rain"]>0:
         return {
             "title":"天気・雨の日の頭痛（湿×気滞）",
@@ -182,7 +174,6 @@ def chief_to_advice(ch, sex):
             "points":["合谷","風池","太陽"],
             "careful":["神経学的異常/突然の激痛は受診"]
         }
-    # 肉後下痢
     if meta["nature"]["diarrhea"]>0 and (meta["context"]["meat"]>0 or meta["context"]["meal"]>0):
         return {
             "title":"肉料理後の下痢（脾虚＋湿）",
@@ -194,7 +185,6 @@ def chief_to_advice(ch, sex):
             "points":["中脘","足三里","関元"],
             "careful":["血便/発熱/激しい腹痛を伴う場合は受診"]
         }
-    # 冷飲後下痢
     if meta["nature"]["diarrhea"]>0 and meta["context"]["cold_drink"]>0:
         return {
             "title":"冷飲後の下痢（陽虚/脾胃の冷え）",
@@ -206,7 +196,6 @@ def chief_to_advice(ch, sex):
             "points":["中脘","神闕（へそ温罨法）"],
             "careful":["脱水に注意。長引く場合は受診"]
         }
-    # 便秘
     if meta["nature"]["constipation"]>0:
         return {
             "title":"便秘（乾燥/瘀血/気滞）",
@@ -225,10 +214,12 @@ def ai_generate_advice(patient, axes, qxs, vis, chosen_formula):
         return None, "APIキー未設定のためルールベースで対応"
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = OpenAI(api_key=OPENAI_API_KEY)  # ※ proxiesは指定しない（v1系）
         prompt = f"""
-あなたは漢方相談のカウンセラーです。以下の主訴と体質所見から、主訴に直結するアドバイスを日本語でJSON出力してください。
-制約：結論先出し・即実践できる提案・過度に一般論にせず主訴に寄り添う。男性の場合は月経言及なし。
+あなたは**主訴最優先**の漢方相談カウンセラーです。以下の情報から、
+「主訴の背景→まず試す→食材（良い/避ける）→生活→ツボ→受診目安」を**簡潔に**、
+かつ**主訴にピンポイント**で日本語JSON出力してください。
+制約：結論先出し／一般論は避ける／体質は補足に回す／男性に月経の言及はしない。
 
 [入力]
 主訴: {patient.get('chief_complaint','')}
@@ -260,7 +251,6 @@ def ai_generate_advice(patient, axes, qxs, vis, chosen_formula):
             temperature=0.3,
         )
         txt = resp.choices[0].message.content.strip()
-        # JSON抽出
         m = re.search(r'\{.*\}', txt, re.S)
         if m:
             data = json.loads(m.group(0))
@@ -271,7 +261,6 @@ def ai_generate_advice(patient, axes, qxs, vis, chosen_formula):
         return None, f"AIエラー: {e}"
 
 def score_and_choose(form):
-    # selections
     jitsu_kyo = form.get("jitsu_kyo","chukan")
     kan_netsu = form.get("kan_netsu","neutral")
     hyo_ri = form.get("hyo_ri","unknown")
@@ -281,7 +270,6 @@ def score_and_choose(form):
     sex = form.get("sex","")
     chief = form.get("chief_complaint","")
 
-    # visual exam
     pulse_strength = form.get("pulse_strength","")
     pulse_rate = form.get("pulse_rate","")
     pulse_quality = form.get("pulse_quality","")
@@ -291,7 +279,6 @@ def score_and_choose(form):
     tongue_coat = form.get("tongue_coat","")
     tongue_moisture = form.get("tongue_moisture","")
 
-    # formulas score
     formulas = { "補中益気湯":0,"六君子湯":0,"人参湯":0,"真武湯":0,"五苓散":0,"当帰芍薬散":0,"逍遙散":0,"桂枝茯苓丸":0,"竹葉石膏湯":0,"半夏厚朴湯":0 }
     reasons = []
 
@@ -316,7 +303,6 @@ def score_and_choose(form):
     if sui == "deficiency":
         formulas["竹葉石膏湯"] += 1
 
-    # tongue/pulse hints
     if pulse_strength == "weak": formulas["補中益気湯"] += 1
     if pulse_rate == "rapid": formulas["竹葉石膏湯"] += 1
     if pulse_quality == "wiry": formulas["逍遙散"] += 1
@@ -326,16 +312,12 @@ def score_and_choose(form):
     if tongue_coat == "yellow": formulas["竹葉石膏湯"] += 1
     if tongue_moisture == "wet": formulas["五苓散"] += 1
 
-    # 主訴加点（精密版）
     meta = parse_chief(chief)
-    # 喉詰まり
     if meta["area"]["throat"]>0 and meta["nature"]["stuck"]>0:
         formulas["半夏厚朴湯"] += 3; formulas["逍遙散"] += 1; reasons.append("喉の異物感→半夏厚朴湯")
         if meta["context"]["rain"]>0: formulas["五苓散"] += 1; reasons.append("雨→湿の関与")
-    # 雨×頭痛
     if meta["area"]["head"]>0 and meta["nature"]["pain"]>0 and meta["context"]["rain"]>0:
         formulas["五苓散"] += 2; formulas["逍遙散"] += 1; reasons.append("雨で頭痛→湿×気滞")
-    # 肉後下痢
     if meta["nature"]["diarrhea"]>0 and (meta["context"]["meat"]>0 or meta["context"]["meal"]>0):
         formulas["六君子湯"] += 2; formulas["人参湯"] += 1; reasons.append("食後下痢→健脾/温中")
 
@@ -397,13 +379,7 @@ def index():
 def submit():
     rec_id = str(uuid.uuid4())
     uploads = {"tongue": [], "face": [], "body": [], "nails": []}
-    # 正しくカテゴリ別に保存
-    field_map = {
-        "tongue_images":"tongue",
-        "face_images":"face",
-        "body_images":"body",
-        "nails_images":"nails"
-    }
+    field_map = {"tongue_images":"tongue","face_images":"face","body_images":"body","nails_images":"nails"}
     for field, key in field_map.items():
         files = request.files.getlist(field)
         for f in files:
@@ -416,7 +392,6 @@ def submit():
 
     form = request.form.to_dict()
     assessment = score_and_choose(form)
-
     record = {
         "id": rec_id,
         "submitted_at": datetime.datetime.utcnow().isoformat() + "Z",
