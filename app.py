@@ -60,7 +60,6 @@ def make_constitution_text(pattern, sex):
             parts.append("瘀血：刺す痛み・月経痛・塊・暗紫舌に注意。")
     if qxs["水"] == "retention":
         parts.append("水滞/痰湿：むくみ・頭重・雨天悪化・軟便。")
-        # if 寒なら湿冷へ
         if jk["寒熱"]=="kan":
             parts.append("とくに“湿冷”の傾向があり、冷たい飲食を控えると安定しやすい。")
     elif qxs["水"] == "deficiency":
@@ -70,55 +69,112 @@ def make_constitution_text(pattern, sex):
     return " ".join(parts)
 
 def diet_and_lifestyle(qi, xue, sui, jk, sex):
-    # 薬膳食材・生活アドバイス・話題ネタを返す
-    food = []
-    life = []
-    topics = []
-
+    food = []; life = []; topics = []
     if qi=="deficiency":
         food += ["米（おかゆ）","山芋","かぼちゃ","鶏肉","うなぎ","なつめ","ハチミツ"]
         life += ["朝は温かい汁物を少量でも","過労・夜更かしを避ける","深呼吸＋軽い散歩で“気”を補う"]
-        topics += ["午後にぐったりしやすいのは“気のガス欠”のサイン","食後の眠気は脾の弱りの目安"]
+        topics += ["午後にぐったりは“気のガス欠”のサイン","食後の眠気は脾の弱りの目安"]
     if qi=="stagnation":
         food += ["陳皮（みかん皮）","ジャスミン茶","ミント","香味野菜（ねぎ・しそ）","柑橘"]
-        life += ["こまめな深呼吸と肩回し","詰め込み過ぎない予定管理","香りを生活に取り入れる"]
-        topics += ["“ため息が増える/胸脇が張る”は気滞の典型","PMS悪化や肩こりと繋がりやすい"]
+        life += ["こまめな深呼吸と肩回し","予定を詰め込み過ぎない","香りを生活に取り入れる"]
+        topics += ["“ため息/胸脇の張り”は気滞の典型","PMS悪化や肩こりと関連"]
     if qi=="rebellion":
         food += ["生姜湯（少量）","山楂（さんざし）","消化の良い温食"]
-        life += ["早食いしない・食後すぐ横にならない","上半身の冷え/緊張を緩めるストレッチ"]
-        topics += ["げっぷ・しゃっくり・逆流は“気の上衝”"]
+        life += ["早食いを避ける・食後すぐ横にならない","上半身ストレッチで胸郭を開く"]
+        topics += ["げっぷ・逆流は“気の上衝”"]
     if xue=="deficiency":
         if sex=="male":
             food += ["レバー","赤身肉","黒ごま","ほうれん草","クコの実","黒豆"]
         else:
             food += ["レバー","赤身肉","黒ごま","ほうれん草","クコの実","黒豆","なつめ"]
-        life += ["睡眠時間の確保（成長ホルモンの時間帯）","急な減量や偏食を避ける"]
+        life += ["睡眠時間の確保","急な減量や偏食を避ける"]
         topics += ["爪の縦線・乾燥は血の不足サイン","目の疲れ・立ちくらみも関連"]
     if xue=="stasis":
         food += ["玉ねぎ","酢の物","黒きくらげ","納豆","サーモン"]
-        life += ["同一姿勢を続けない","軽い有酸素運動で巡り改善","冷えを溜めない服装"]
-        topics += ["“刺すような固定痛”は瘀血のヒント","肩こり・頭痛・しこりと関連"]
+        life += ["同一姿勢を続けない","軽い有酸素運動","冷えを溜めない服装"]
+        topics += ["“刺す固定痛”は瘀血のヒント","肩こり・頭痛・しこりと関連"]
     if sui=="retention":
         food += ["はと麦（ヨクイニン）","冬瓜","きゅうり（夏）","とうもろこしのひげ茶","黒豆茶"]
-        life += ["冷たい飲食を控え温かいお茶を少量ずつ","軽く汗ばむ運動・半身浴"]
+        life += ["冷飲を控え温かいお茶を少量ずつ","軽く汗ばむ運動・半身浴"]
         topics += ["“天気で悪化・頭重・むくみ”は水の偏り","舌の歯痕・腫大が手掛かり"]
     if sui=="deficiency":
-        food += ["白きくらげ","梨のコンポート","れんこん","麦門冬茶（むぎもんどう）","はちみつレモン（温）"]
-        life += ["夜更かしを避ける（津液を消耗）","乾燥した季節は加湿"]
+        food += ["白きくらげ","梨のコンポート","れんこん","麦門冬茶","はちみつレモン（温）"]
+        life += ["夜更かしを避ける（津液を消耗）","乾燥季は加湿"]
         topics += ["皮膚・口・咽の乾燥は“津液不足”","便がコロコロになりやすい"]
-
     if jk=="kan":
         food += ["生姜","ねぎ","シナモン（少量）"]
-        life += ["腹巻き・足首を冷やさない","冷房直風を避ける"]
+        life += ["腹巻き・足首を冷やさない","冷房の直風を避ける"]
     if jk=="netsu":
         food += ["豆腐","緑豆","セロリ","きゅうり（夏）","大根","麦茶"]
-        life += ["辛味・アルコール過多を控える","室内のこまめな換気と水分補給"]
-
-    # 重複排除
-    food = list(dict.fromkeys(food))
-    life = list(dict.fromkeys(life))
-    topics = list(dict.fromkeys(topics))
+        life += ["辛味・アルコール過多を控える","水分補給と換気"]
+    # remove duplicates
+    food = list(dict.fromkeys(food)); life = list(dict.fromkeys(life)); topics = list(dict.fromkeys(topics))
     return food, life, topics
+
+def extract_chief_kws(ch):
+    s = (ch or "").lower()
+    kws = []
+    def has(words): return any(w in s for w in words)
+    if has(["むくみ","浮腫","はれる"]): kws.append("むくみ")
+    if has(["頭痛","片頭痛","こめかみ","頭がいた","頭が痛"]): kws.append("頭痛")
+    if has(["肩こり","首こり","肩が張"]): kws.append("肩こり")
+    if has(["眠れ","寝つけ","中途覚醒","夢が多い"]): kws.append("不眠")
+    if has(["下痢","くだ"]): kws.append("下痢")
+    if has(["便秘","硬い便","出にくい"]): kws.append("便秘")
+    if has(["ほてり","のぼせ","口渇"]): kws.append("ほてり")
+    if has(["冷え","寒気","手足が冷"]): kws.append("冷え")
+    if has(["生理痛","月経痛","pms"]): kws.append("月経痛")
+    if has(["胃もたれ","もたれ","膨満","ガス"]): kws.append("もたれ")
+    if has(["雨","天気","台風","気圧"]): kws.append("天気頭痛")
+    return kws
+
+def chief_specific_advice(kws):
+    """主訴別の具体的アドバイス（薬膳・ツボ・セルフケア・注意）。"""
+    adv = []
+    for k in kws:
+        if k=="天気頭痛":
+            adv.append({
+                "title":"雨・気圧変化で頭が痛くなる（天気頭痛）",
+                "why":"気圧低下で水の巡りが滞りやすく、頭重・むくみ・倦怠が出やすい体質では悪化しやすい。",
+                "try":[
+                    "温かい利水系の飲み物：はと麦茶・とうもろこしのひげ茶を少量ずつ",
+                    "首肩の温め（蒸しタオル）＋僧帽筋ストレッチ",
+                    "ツボ：合谷・風池・太陽を各30秒×3セット",
+                    "前日から塩分・アルコールを控える、睡眠を確保",
+                    "外出時は雨天の冷えを避ける服装（首・頭部を冷やさない）"
+                ],
+                "kanpo_hint":"水滞が強い日は五苓散系が適合することがあります（最終判断は薬剤師/医師）。",
+                "redflags":[
+                    "“未経験の激しい頭痛” “神経症状（ろれつが回らない/手足の麻痺/視野異常）” “発熱・項部硬直”がある → 直ちに医療機関へ"
+                ]
+            })
+        if k=="頭痛":
+            adv.append({
+                "title":"頭痛（一般）",
+                "why":"瘀血・気滞・水滞・寒熱など原因は多様。冷え/温めで変化、天気との関係、肩こりの有無を確認。",
+                "try":[
+                    "こめかみ〜耳上の温湿布（寒タイプ） or ひたい・うなじの冷却（熱タイプ）",
+                    "無理なスクリーン作業を中断し深呼吸1分",
+                    "ツボ：合谷・太衝（情緒由来）・風池（首こり）"
+                ],
+                "kanpo_hint":"固定痛・刺す痛みは瘀血傾向→活血剤、張って締め付ける痛みは気滞傾向→疏肝、頭重は水滞→利水を検討。",
+                "redflags":[
+                    "外傷直後・突然の雷鳴頭痛・高熱・妊娠高血圧疑い → 受診"
+                ]
+            })
+        if k=="むくみ":
+            adv.append({
+                "title":"むくみ",
+                "why":"水のさばきが弱い（水滞）。雨天・長時間座位で悪化。",
+                "try":[
+                    "温かいお茶を少量ずつ（はと麦・黒豆）",
+                    "ふくらはぎポンプ運動、入浴で発汗を促す"
+                ],
+                "kanpo_hint":"五苓散系が候補。冷えが強ければ温補併用を検討。",
+                "redflags":["呼吸苦・急な体重増加・片側のみ激しい腫れ → 受診"]
+            })
+        # ほかの主訴も必要に応じて追加可能
+    return adv
 
 def score_and_choose(form):
     jitsu_kyo = form.get("jitsu_kyo","")
@@ -130,7 +186,6 @@ def score_and_choose(form):
     sex = form.get("sex","")
     chief = form.get("chief_complaint","")
 
-    # 視診
     pulse_strength = form.get("pulse_strength","")
     pulse_rate = form.get("pulse_rate","")
     pulse_quality = form.get("pulse_quality","")
@@ -140,7 +195,6 @@ def score_and_choose(form):
     tongue_coat = form.get("tongue_coat","")
     tongue_moisture = form.get("tongue_moisture","")
 
-    # ルールベーススコア
     formulas = { "補中益気湯":0,"六君子湯":0,"人参湯":0,"真武湯":0,"五苓散":0,"当帰芍薬散":0,"逍遙散":0,"桂枝茯苓丸":0,"竹葉石膏湯":0 }
     reasons = []
 
@@ -174,23 +228,8 @@ def score_and_choose(form):
     if tongue_coat == "yellow": formulas["竹葉石膏湯"] += 1
     if tongue_moisture == "wet": formulas["五苓散"] += 1
 
-    # 簡易主訴処理（v5と同様の辞書だが中で完結）
-    def kw(ch):
-        s = (ch or "").lower()
-        m = []
-        if any(w in s for w in ["むくみ","浮腫","はれる"]): m.append("むくみ")
-        if any(w in s for w in ["頭痛","片頭痛","こめかみ"]): m.append("頭痛")
-        if any(w in s for w in ["肩こり","首こり","肩が張"]): m.append("肩こり")
-        if any(w in s for w in ["眠れ","寝つけ","中途覚醒","夢が多い"]): m.append("不眠")
-        if any(w in s for w in ["下痢","くだ"]): m.append("下痢")
-        if any(w in s for w in ["便秘","硬い便","出にくい"]): m.append("便秘")
-        if any(w in s for w in ["ほてり","のぼせ","口渇"]): m.append("ほてり")
-        if any(w in s for w in ["冷え","寒気","手足が冷"]): m.append("冷え")
-        if any(w in s for w in ["生理痛","月経痛","pms"]): m.append("月経痛")
-        if any(w in s for w in ["胃もたれ","もたれ","膨満","ガス"]): m.append("もたれ")
-        return m
-    chief_kws = kw(chief)
-    chief_rules = []
+    # 主訴キーワードとスコア
+    chief_kws = extract_chief_kws(chief)
     complaint_map = {
         "頭痛":[("桂枝茯苓丸",1),("逍遙散",1)],
         "肩こり":[("桂枝茯苓丸",2),("逍遙散",1)],
@@ -201,8 +240,10 @@ def score_and_choose(form):
         "冷え":[("真武湯",2),("人参湯",1)],
         "ほてり":[("竹葉石膏湯",2)],
         "不眠":[("逍遙散",1)],
-        "月経痛":[("桂枝茯苓丸",3),("当帰芍薬散",1)]
+        "月経痛":[("桂枝茯苓丸",3),("当帰芍薬散",1)],
+        "天気頭痛":[("五苓散",2)]  # 追加：気圧/雨関連
     }
+    chief_rules = []
     for k in chief_kws:
         for f, add in complaint_map.get(k, []):
             formulas[f] += add
@@ -222,13 +263,13 @@ def score_and_choose(form):
         "竹葉石膏湯":{"explain":"熱をさましつつ消耗を補います。ほてり・口渇・だるさが同時にある時に。","lifestyle":"水分はこまめに。辛味の強い香辛料は控えめに。","watch":"冷えが強い日は合いにくいことがあります。"}
     }
 
-    # 体質テキスト
+    # 主訴別アドバイス
+    chief_adv = chief_specific_advice(chief_kws)
+
     constitution_description = make_constitution_text({"八綱":{"実虚":jitsu_kyo,"寒熱":kan_netsu,"表裏":hyo_ri},
                                                         "気血水":{"気":qi,"血":xue,"水":sui}}, sex)
 
-    # 薬膳・生活・話題
     food, life, topics = diet_and_lifestyle(qi, xue, sui, kan_netsu, sex)
-
     pattern = {
         "八綱":{"実虚":jitsu_kyo,"寒熱":kan_netsu,"表裏":hyo_ri},
         "気血水":{"気":qi,"血":xue,"水":sui},
@@ -237,11 +278,7 @@ def score_and_choose(form):
                   "舌":{"色":tongue_color,"体":tongue_body,"苔":tongue_coat,"湿":tongue_moisture}}
     }
 
-    # 主訴メモ
-    if len(chief.strip())>0:
-        chief_note = "主訴にも配慮して選定しています。"
-    else:
-        chief_note = "主訴の記載がないため体質中心で選定しています。"
+    chief_note = "主訴にも配慮して選定しています。" if (chief or "").strip() else "主訴の記載がないため体質中心で選定しています。"
 
     return {
         "chosen": chosen,
@@ -253,7 +290,9 @@ def score_and_choose(form):
         "lifestyle": life,
         "topics": topics,
         "chief_note": chief_note,
-        "chief_raw": chief
+        "chief_raw": chief,
+        "chief_keywords": chief_kws,
+        "chief_advice": chief_adv
     }
 
 @app.route("/")

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>記録詳細（v6）</title>
+<title>記録詳細（v7）</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
   .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
@@ -16,7 +16,7 @@
 </style>
 </head>
 <body>
-<h1>記録詳細（v6）</h1>
+<h1>記録詳細（v7）</h1>
 
 <div class="block">
   <h3>患者情報</h3>
@@ -40,6 +40,22 @@
 <div class="block">
   <h3>体質の説明（お客様向け）</h3>
   <p>{{ pre.constitution }}</p>
+</div>
+
+<div class="block">
+  <h3>主訴別アドバイス</h3>
+  {% if pre.chief_keywords %}
+    {% for a in pre.chief_advice %}
+      <h4>・{{ a.title }}</h4>
+      <p><strong>背景：</strong>{{ a.why }}</p>
+      <p><strong>まず試す：</strong></p>
+      <ul>{% for t in a.try %}<li>{{ t }}</li>{% endfor %}</ul>
+      {% if a.kanpo_hint %}<p class="mono">漢方のヒント：{{ a.kanpo_hint }}</p>{% endif %}
+      {% if a.redflags %}<p><strong>危険サイン：</strong></p><ul>{% for r in a.redflags %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+    {% endfor %}
+  {% else %}
+    <div>（主訴に特化したアドバイスはありません）</div>
+  {% endif %}
 </div>
 
 <div class="block">

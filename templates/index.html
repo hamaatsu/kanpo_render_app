@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>漢方AI問診（v6 主訴＆薬膳・話題ネタ）</title>
+<title>漢方AI問診（v7 主訴別アドバイス追加）</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
   .section{border:1px solid #ddd;border-radius:10px;padding:14px;margin:14px 0;background:#fff}
@@ -29,7 +29,7 @@
 </style>
 </head>
 <body>
-<h1>漢方AI問診（v6）</h1>
+<h1>漢方AI問診（v7）</h1>
 
 <details class="section" open>
   <summary><strong>初心者薬剤師向けガイド（読み上げOK）</strong></summary>
@@ -51,8 +51,8 @@
         <div><label>性別<select name="sex"><option value="">未選択</option><option value="female">女性</option><option value="male">男性</option><option value="other">その他</option></select></label></div>
         <div><label>地域<input name="region"></label></div>
       </div>
-      <label>主訴（そのまま書いてOK）<textarea name="chief_complaint" rows="2" placeholder="例：慢性的な肩こりと頭痛。雨の日にむくみやすい。冷たい飲み物でお腹を壊す…など"></textarea></label>
-      <div class="hint">※ 主訴は薬選定・説明に反映されます。</div>
+      <label>主訴（そのまま書いてOK）<textarea name="chief_complaint" rows="2" placeholder="例：雨の日に頭がいたくなる。冷たい飲み物でお腹を壊す…など"></textarea></label>
+      <div class="hint">※ 主訴は薬選定・説明・<b>主訴別アドバイス</b>に反映されます。</div>
     </div>
 
     <div class="section">
@@ -65,7 +65,7 @@
 
           <h4>寒・熱</h4>
           <div class="row"><input type="checkbox" class="c-flag" data-type="kan" id="c1"><label for="c1">冷える/温めて楽/冷飲苦手/薄白苔/顔青白 <span class="score">(寒+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="c-flag" data-type="netsu" id="c2"><label for="c2">ほてり・口渇/寝汗/便秘・黄色尿/舌紅・黄苔/顔赤い <span class="score">(熱+1)</span></label></div>
+          <div class="row"><input type="checkbox" class="c-flag" data-type="netsu" id="c2"><"><label for="c2">ほてり・口渇/寝汗/便秘・黄色尿/舌紅・黄苔/顔赤い <span class="score">(熱+1)</span></label></div>
 
           <h4>表・裏</h4>
           <div class="row"><input type="checkbox" class="b-flag" data-type="hyo" id="b1"><label for="b1">悪寒発熱/項背こわばり/汗が定まらない/急性 <span class="score">(表+1)</span></label></div>
@@ -78,8 +78,8 @@
           <div class="row"><input type="checkbox" class="q-flag" data-type="stagnation" id="q2"><label for="q2">張る・ため息/ストレスで悪化/脇〜みぞおちがつまる <span class="score">(気滞+1)</span></label></div>
           <div class="row"><input type="checkbox" class="q-flag" data-type="rebellion" id="q3"><label for="q3">のぼせ・げっぷ/逆流/咳き上げ <span class="score">(気逆+1)</span></label></div>
 
-          <div class="row"><input type="checkbox" class="x-flag" data-type="deficiency" id="x1"><label for="x1">乾燥・不眠・めまい{{'（女性：月経量少）'}}</label></div>
-          <div class="row"><input type="checkbox" class="x-flag" data-type="stasis" id="x2"><label for="x2">刺痛/固定痛/{{'（女性：月経痛・塊）'}}</label></div>
+          <div class="row"><input type="checkbox" class="x-flag" data-type="deficiency" id="x1"><label for="x1">乾燥・不眠・めまい（女性：月経量少）</label></div>
+          <div class="row"><input type="checkbox" class="x-flag" data-type="stasis" id="x2"><label for="x2">刺痛/固定痛（女性：月経痛・塊）</label></div>
 
           <div class="row"><input type="checkbox" class="s-flag" data-type="retention" id="s1"><label for="s1">むくみ/頭重/雨で悪化/軟便/厚白苔/脈滑 <span class="score">(水滞+1)</span></label></div>
           <div class="row"><input type="checkbox" class="s-flag" data-type="deficiency" id="s2"><label for="s2">口乾/皮膚乾燥/咽乾/便秘気味/無苔寄り <span class="score">(津液不足+1)</span></label></div>
@@ -111,7 +111,7 @@
               <option value="">未選択</option><option value="rapid">速い（数）</option><option value="normal">普通（平）</option><option value="slow">遅い（遅）</option>
             </select>
           </label>
-          <label title="弦＝ピーンと張る、滑＝ヌルッと滑らか、渋＝ぎこちない。">
+          <label title="弦＝ピーンと張る、滑＝ヌルっと滑らか、渋＝ぎこちない。">
             性状
             <select name="pulse_quality">
               <option value="">未選択</option><option value="wiry">弦（張る）</option><option value="slippery">滑（ヌルッ）</option><option value="rough">渋（ぎこちない）</option><option value="none">特になし</option>
@@ -175,7 +175,7 @@
     <input type="hidden" name="sui" id="sui">
 
     <div class="section">
-      <button type="submit">AI判定（方剤1種＋体質説明＋薬膳・話題）を表示</button>
+      <button type="submit">AI判定（方剤1種＋体質説明＋薬膳・話題・主訴アドバイス）を表示</button>
     </div>
   </div>
 
