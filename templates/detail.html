@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>記録詳細</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", sans-serif; margin: 24px; }
+    .block { border:1px solid #ddd; border-radius:8px; padding:12px; margin:12px 0; }
+    img { max-width: 240px; height:auto; margin:6px; border:1px solid #ddd; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>記録詳細</h1>
+  <div class="block">
+    <h3>患者情報</h3>
+    <p>氏名: {{ data.patient.name }} / 年齢: {{ data.patient.age }} / 性別: {{ data.patient.sex }} / 地域: {{ data.patient.region }}</p>
+    <p>主訴: {{ data.patient.chief_complaint }}</p>
+    <p>レコードID: <code>{{ data.id }}</code> / 受理: {{ data.submitted_at }}</p>
+  </div>
+  <div class="block">
+    <h3>AI暫定判定</h3>
+    <pre>{{ data.ai_preassessment | tojson(indent=2, ensure_ascii=False) }}</pre>
+  </div>
+  <div class="block">
+    <h3>画像</h3>
+    {% for part in ["tongue","face","body","nails"] %}
+      <h4>{{ part }}</h4>
+      {% for url in data.inspection_uploads[part] %}
+        <a href="{{ url }}" target="_blank"><img src="{{ url }}"></a>
+      {% endfor %}
+    {% endfor %}
+  </div>
+  <p><a href="/admin">一覧へ</a></p>
+</body>
+</html>
