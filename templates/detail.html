@@ -3,24 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>記録詳細</title>
+<title>記録詳細（v6）</title>
 <style>
-  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:24px;line-height:1.6}
-  .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
+  .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
   .tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#f4f4f4;margin:2px 6px 2px 0;font-size:13px}
   table{border-collapse:collapse;width:100%}
   th,td{border:1px solid #eee;padding:8px;vertical-align:top}
   img{max-width:220px;height:auto;margin:6px;border:1px solid #ddd;border-radius:6px}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;white-space:pre-wrap}
+  .chips span{display:inline-block;background:#f5f5f5;border-radius:999px;padding:4px 10px;margin:2px}
 </style>
 </head>
 <body>
-<h1>記録詳細</h1>
+<h1>記録詳細（v6）</h1>
 
 <div class="block">
   <h3>患者情報</h3>
   <div>氏名: {{ data.patient.name }}　/　年齢: {{ data.patient.age }}　/　性別: {{ data.patient.sex }}　/　地域: {{ data.patient.region }}</div>
-  <div>主訴: {{ data.patient.chief_complaint }}</div>
+  <div>主訴: {{ data.patient.chief_complaint or "（未記入）" }}</div>
   <div>レコードID: <code>{{ data.id }}</code>　/　受理: {{ data.submitted_at }}</div>
 </div>
 
@@ -33,11 +34,39 @@
   <h3>AI提案（最終判断は薬剤師）</h3>
   <h2>推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
   <div class="mono">選定理由：{{ (pre.reasons or [])|join(" / ") }}</div>
+  <div class="mono">{{ pre.chief_note }}</div>
 </div>
 
 <div class="block">
   <h3>体質の説明（お客様向け）</h3>
   <p>{{ pre.constitution }}</p>
+</div>
+
+<div class="block">
+  <h3>薬膳食材（体質に合わせた提案）</h3>
+  {% if pre.diet %}
+    <div class="chips">{% for f in pre.diet %}<span>{{ f }}</span>{% endfor %}</div>
+  {% else %}
+    <div>（特記なし）</div>
+  {% endif %}
+</div>
+
+<div class="block">
+  <h3>日常生活アドバイス</h3>
+  {% if pre.lifestyle %}
+    <ul>{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% else %}
+    <div>（特記なし）</div>
+  {% endif %}
+</div>
+
+<div class="block">
+  <h3>会話のきっかけ（話題ネタ）</h3>
+  {% if pre.topics %}
+    <ul>{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>
+  {% else %}
+    <div>（特記なし）</div>
+  {% endif %}
 </div>
 
 <div class="block">
