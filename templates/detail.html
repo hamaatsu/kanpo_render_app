@@ -5,33 +5,98 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>記録詳細</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", sans-serif; margin: 24px; }
-    .block { border:1px solid #ddd; border-radius:8px; padding:12px; margin:12px 0; }
-    img { max-width: 240px; height:auto; margin:6px; border:1px solid #ddd; }
-    pre { white-space: pre-wrap; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", sans-serif; margin: 24px; line-height:1.6; }
+    .block { border:1px solid #ddd; border-radius:10px; padding:16px; margin:16px 0; }
+    .tag { display:inline-block; padding:4px 8px; border-radius:999px; background:#f4f4f4; margin:2px 6px 2px 0; font-size:13px; }
+    h1,h2,h3 { margin: 0 0 10px; }
+    table { border-collapse: collapse; width:100%; }
+    th, td { border:1px solid #eee; padding:8px; vertical-align:top; }
+    img { max-width: 220px; height:auto; margin:6px; border:1px solid #ddd; border-radius:6px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 13px; white-space: pre-wrap; }
   </style>
 </head>
 <body>
   <h1>記録詳細</h1>
+
   <div class="block">
     <h3>患者情報</h3>
-    <p>氏名: {{ data.patient.name }} / 年齢: {{ data.patient.age }} / 性別: {{ data.patient.sex }} / 地域: {{ data.patient.region }}</p>
-    <p>主訴: {{ data.patient.chief_complaint }}</p>
-    <p>レコードID: <code>{{ data.id }}</code> / 受理: {{ data.submitted_at }}</p>
+    <div>氏名: {{ data.patient.name }}　/　年齢: {{ data.patient.age }}　/　性別: {{ data.patient.sex }}　/　地域: {{ data.patient.region }}</div>
+    <div>主訴: {{ data.patient.chief_complaint }}</div>
+    <div>レコードID: <code>{{ data.id }}</code>　/　受理: {{ data.submitted_at }}</div>
   </div>
+
+  {% set pre = data.ai_preassessment %}
+  {% set axes = pre.pattern["八綱"] %}
+  {% set qxs = pre.pattern["気血水"] %}
+  {% set vis = pre.pattern["視診補助"] %}
+
   <div class="block">
-    <h3>AI暫定判定</h3>
-    <pre>{{ data.ai_preassessment | tojson(indent=2) }}</pre>
+    <h3>AI暫定判定（要最終確認）</h3>
+
+    <h4>候補方剤</h4>
+    {% if pre.candidates and pre.candidates[0] != "条件が少なく候補を絞り切れませんでした" %}
+      <ul>
+        {% for fz in pre.candidates %}
+          <li><strong>{{ fz }}</strong></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div>（条件不足のため候補が確定できませんでした）</div>
+    {% endif %}
+
+    <h4>判定の理由</h4>
+    <div class="mono">{{ pre.rationale }}</div>
   </div>
+
   <div class="block">
-    <h3>画像</h3>
+    <h3>証（パターン）</h3>
+    <table>
+      <tr>
+        <th style="width:150px">八綱</th>
+        <td>
+          <span class="tag">実虚: {{ axes["実虚"] or "—" }}</span>
+          <span class="tag">寒熱: {{ axes["寒熱"] or "—" }}</span>
+          <span class="tag">表裏: {{ axes["表裏"] or "—" }}</span>
+        </td>
+      </tr>
+      <tr>
+        <th>気血水</th>
+        <td>
+          <span class="tag">気: {{ qxs["気"] or "—" }}</span>
+          <span class="tag">血: {{ qxs["血"] or "—" }}</span>
+          <span class="tag">水: {{ qxs["水"] or "—" }}</span>
+        </td>
+      </tr>
+      <tr>
+        <th>視診補助</th>
+        <td>
+          <div class="tag">脈の力: {{ vis["脈"]["力"] or "—" }}</div>
+          <div class="tag">脈の速さ: {{ vis["脈"]["速さ"] or "—" }}</div>
+          <div class="tag">脈の性状: {{ vis["脈"]["性状"] or "—" }}</div>
+          <div class="tag">顔色: {{ vis["顔色"] or "—" }}</div>
+          <div class="tag">舌の色: {{ vis["舌"]["色"] or "—" }}</div>
+          <div class="tag">舌の体: {{ vis["舌"]["体"] or "—" }}</div>
+          <div class="tag">舌苔: {{ vis["舌"]["苔"] or "—" }}</div>
+          <div class="tag">舌の湿: {{ vis["舌"]["湿"] or "—" }}</div>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="block">
+    <h3>アップロード画像</h3>
     {% for part in ["tongue","face","body","nails"] %}
-      <h4>{{ part }}</h4>
-      {% for url in data.inspection_uploads[part] %}
-        <a href="{{ url }}" target="_blank"><img src="{{ url }}"></a>
-      {% endfor %}
+      <h4>{{ {"tongue":"舌","face":"顔","body":"体・むくみ","nails":"爪"}[part] }}</h4>
+      {% if data.inspection_uploads[part] %}
+        {% for url in data.inspection_uploads[part] %}
+          <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="{{ part }}"></a>
+        {% endfor %}
+      {% else %}
+        <div>（画像なし）</div>
+      {% endif %}
     {% endfor %}
   </div>
-  <p><a href="/admin">一覧へ</a></p>
+
+  <p><a href="/admin">一覧へ</a>　｜　<a href="/">新規登録へ</a></p>
 </body>
 </html>
