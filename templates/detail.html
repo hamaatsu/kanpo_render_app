@@ -1,22 +1,15 @@
-<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>記録詳細（v7）</title>
+<!doctype html><html lang="ja"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>記録詳細 v8</title>
 <style>
-  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
-  .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
-  .tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#f4f4f4;margin:2px 6px 2px 0;font-size:13px}
-  table{border-collapse:collapse;width:100%}
-  th,td{border:1px solid #eee;padding:8px;vertical-align:top}
-  img{max-width:220px;height:auto;margin:6px;border:1px solid #ddd;border-radius:6px}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;white-space:pre-wrap}
-  .chips span{display:inline-block;background:#f5f5f5;border-radius:999px;padding:4px 10px;margin:2px}
-</style>
-</head>
-<body>
-<h1>記録詳細（v7）</h1>
+body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
+.block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
+.tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#f4f4f4;margin:2px;font-size:13px}
+ul{padding-left:18px}
+img{max-width:220px;height:auto;margin:6px;border:1px solid #ddd;border-radius:6px}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:pre-wrap}
+</style></head><body>
+<h1>記録詳細 v8</h1>
 
 <div class="block">
   <h3>患者情報</h3>
@@ -34,7 +27,36 @@
   <h3>AI提案（最終判断は薬剤師）</h3>
   <h2>推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
   <div class="mono">選定理由：{{ (pre.reasons or [])|join(" / ") }}</div>
-  <div class="mono">{{ pre.chief_note }}</div>
+</div>
+
+<div class="block">
+  <h3>主訴に直結するアドバイス</h3>
+  {% if pre.chief_advice %}
+    <h4>{{ pre.chief_advice.label }}</h4>
+    <p>{{ pre.chief_advice.background }}</p>
+    <h5>まず試す：</h5>
+    <ul>{% for a in pre.chief_advice.first %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% if pre.chief_advice.foods_good %}
+      <h5>相性の良い薬膳食材：</h5>
+      <div>{% for f in pre.chief_advice.foods_good %}<span class="tag">{{ f }}</span>{% endfor %}</div>
+    {% endif %}
+    {% if pre.chief_advice.foods_avoid %}
+      <h5>避けたいもの：</h5>
+      <div>{% for f in pre.chief_advice.foods_avoid %}<span class="tag">{{ f }}</span>{% endfor %}</div>
+    {% endif %}
+    {% if pre.chief_advice.points %}
+      <h5>生活のポイント：</h5>
+      <ul>{% for a in pre.chief_advice.points %}<li>{{ a }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if pre.chief_advice.tsubo %}
+      <h5>ツボ：</h5>
+      <div>{% for t in pre.chief_advice.tsubo %}<span class="tag">{{ t }}</span>{% endfor %}</div>
+    {% endif %}
+    {% if pre.chief_advice.note %}<p class="mono">メモ：{{ pre.chief_advice.note }}</p>{% endif %}
+    {% if pre.chief_advice.danger %}<p class="mono">※ {{ pre.chief_advice.danger }}</p>{% endif %}
+  {% else %}
+    <p>主訴が未入力か、該当パターンがありませんでした。</p>
+  {% endif %}
 </div>
 
 <div class="block">
@@ -43,46 +65,13 @@
 </div>
 
 <div class="block">
-  <h3>主訴別アドバイス</h3>
-  {% if pre.chief_keywords %}
-    {% for a in pre.chief_advice %}
-      <h4>・{{ a.title }}</h4>
-      <p><strong>背景：</strong>{{ a.why }}</p>
-      <p><strong>まず試す：</strong></p>
-      <ul>{% for t in a.try %}<li>{{ t }}</li>{% endfor %}</ul>
-      {% if a.kanpo_hint %}<p class="mono">漢方のヒント：{{ a.kanpo_hint }}</p>{% endif %}
-      {% if a.redflags %}<p><strong>危険サイン：</strong></p><ul>{% for r in a.redflags %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
-    {% endfor %}
-  {% else %}
-    <div>（主訴に特化したアドバイスはありません）</div>
-  {% endif %}
-</div>
-
-<div class="block">
-  <h3>薬膳食材（体質に合わせた提案）</h3>
-  {% if pre.diet %}
-    <div class="chips">{% for f in pre.diet %}<span>{{ f }}</span>{% endfor %}</div>
-  {% else %}
-    <div>（特記なし）</div>
-  {% endif %}
+  <h3>薬膳食材（体質連動）</h3>
+  {% if pre.diet %}<div>{% for f in pre.diet %}<span class="tag">{{ f }}</span>{% endfor %}</div>{% else %}<div>（特記なし）</div>{% endif %}
 </div>
 
 <div class="block">
   <h3>日常生活アドバイス</h3>
-  {% if pre.lifestyle %}
-    <ul>{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>
-  {% else %}
-    <div>（特記なし）</div>
-  {% endif %}
-</div>
-
-<div class="block">
-  <h3>会話のきっかけ（話題ネタ）</h3>
-  {% if pre.topics %}
-    <ul>{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>
-  {% else %}
-    <div>（特記なし）</div>
-  {% endif %}
+  {% if pre.lifestyle %}<ul>{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>{% else %}<div>（特記なし）</div>{% endif %}
 </div>
 
 <div class="block">
@@ -96,37 +85,26 @@
 
 <div class="block">
   <h3>判定された証（パターン）</h3>
-  <table>
-    <tr>
-      <th style="width:150px">八綱</th>
-      <td>
-        <span class="tag">実虚: {{ axes["実虚"] or "—" }}</span>
-        <span class="tag">寒熱: {{ axes["寒熱"] or "—" }}</span>
-        <span class="tag">表裏: {{ axes["表裏"] or "—" }}</span>
-      </td>
-    </tr>
-    <tr>
-      <th>気血水</th>
-      <td>
-        <span class="tag">気: {{ qxs["気"] or "—" }}</span>
-        <span class="tag">血: {{ qxs["血"] or "—" }}</span>
-        <span class="tag">水: {{ qxs["水"] or "—" }}</span>
-      </td>
-    </tr>
-    <tr>
-      <th>視診補助</th>
-      <td>
-        <div class="tag">脈の力: {{ vis["脈"]["力"] or "—" }}</div>
-        <div class="tag">脈の速さ: {{ vis["脈"]["速さ"] or "—" }}</div>
-        <div class="tag">脈の性状: {{ vis["脈"]["性状"] or "—" }}</div>
-        <div class="tag">顔色: {{ vis["顔色"] or "—" }}</div>
-        <div class="tag">舌の色: {{ vis["舌"]["色"] or "—" }}</div>
-        <div class="tag">舌の体: {{ vis["舌"]["体"] or "—" }}</div>
-        <div class="tag">舌苔: {{ vis["舌"]["苔"] or "—" }}</div>
-        <div class="tag">舌の湿: {{ vis["舌"]["湿"] or "—" }}</div>
-      </td>
-    </tr>
-  </table>
+  <div>
+    <span class="tag">実虚: {{ axes["実虚"] or "—" }}</span>
+    <span class="tag">寒熱: {{ axes["寒熱"] or "—" }}</span>
+    <span class="tag">表裏: {{ axes["表裏"] or "—" }}</span>
+  </div>
+  <div>
+    <span class="tag">気: {{ qxs["気"] or "—" }}</span>
+    <span class="tag">血: {{ qxs["血"] or "—" }}</span>
+    <span class="tag">水: {{ qxs["水"] or "—" }}</span>
+  </div>
+  <div>
+    <span class="tag">脈の力: {{ vis["脈"]["力"] or "—" }}</span>
+    <span class="tag">脈の速さ: {{ vis["脈"]["速さ"] or "—" }}</span>
+    <span class="tag">脈の性状: {{ vis["脈"]["性状"] or "—" }}</span>
+    <span class="tag">顔色: {{ vis["顔色"] or "—" }}</span>
+    <span class="tag">舌の色: {{ vis["舌"]["色"] or "—" }}</span>
+    <span class="tag">舌の体: {{ vis["舌"]["体"] or "—" }}</span>
+    <span class="tag">舌苔: {{ vis["舌"]["苔"] or "—" }}</span>
+    <span class="tag">舌の湿: {{ vis["舌"]["湿"] or "—" }}</span>
+  </div>
 </div>
 
 <div class="block">
@@ -134,15 +112,10 @@
   {% for part in ["tongue","face","body","nails"] %}
     <h4>{{ {"tongue":"舌","face":"顔","body":"体・むくみ","nails":"爪"}[part] }}</h4>
     {% if data.inspection_uploads[part] %}
-      {% for url in data.inspection_uploads[part] %}
-        <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="{{ part }}"></a>
-      {% endfor %}
-    {% else %}
-      <div>（画像なし）</div>
-    {% endif %}
+      {% for url in data.inspection_uploads[part] %}<a href="{{ url }}" target="_blank"><img src="{{ url }}"></a>{% endfor %}
+    {% else %}（画像なし）{% endif %}
   {% endfor %}
 </div>
 
-<p><a href="/admin">一覧へ</a> ｜ <a href="/">新規登録へ</a></p>
-</body>
-</html>
+<p><a href="/admin">一覧へ</a> ｜ <a href="/">新規登録</a></p>
+</body></html>
