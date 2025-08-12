@@ -72,21 +72,19 @@
       </ul>
       <hr>
     {% endfor %}
-  {% else %}
     <div>主訴の具体性が不足しているため、一般的なアドバイスを表示しています。</div>
   {% endif %}
 </div>
 
 <div class="block">
   <h3>体質の説明（お客様向け）</h3>
-  <p>{{ pre.constitution }}</p>
+  <p>{{ pre.patient_summary if pre.patient_summary else pre.constitution }}</p>
 </div>
 
 <div class="block">
   <h3>薬膳食材（体質に合わせた提案）</h3>
   {% if pre.diet %}
     <div class="chips">{% for f in pre.diet %}<span>{{ f }}</span>{% endfor %}</div>
-  {% else %}
     <div>（特記なし）</div>
   {% endif %}
 </div>
@@ -95,7 +93,6 @@
   <h3>日常生活アドバイス</h3>
   {% if pre.lifestyle %}
     <ul>{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>
-  {% else %}
     <div>（特記なし）</div>
   {% endif %}
 </div>
@@ -104,7 +101,6 @@
   <h3>会話のきっかけ（話題ネタ）</h3>
   {% if pre.topics %}
     <ul>{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>
-  {% else %}
     <div>（特記なし）</div>
   {% endif %}
 </div>
@@ -147,6 +143,22 @@
   </table>
 </div>
 
+<div class="block">
+  <h3>アップロード画像</h3>
+  {% for part in ["tongue","face","body","nails"] %}
+    <h4>{{ {"tongue":"舌","face":"顔","body":"体・むくみ","nails":"爪"}[part] }}</h4>
+    {% if data.inspection_uploads[part] %}
+      {% for url in data.inspection_uploads[part] %}
+        <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="{{ part }}"></a>
+      {% endfor %}
+      {% set note_key = part + "_note" %}
+      {% if data.inspection_notes[note_key] %}
+        <div class="mono">所見メモ：{{ data.inspection_notes[note_key] }}</div>
+      {% endif %}
+      <div>（画像なし）</div>
+    {% endif %}
+  {% endfor %}
+</div>
 
 <p><a href="/admin">一覧へ</a> ｜ <a href="/">新規登録へ</a></p>
 </body>
