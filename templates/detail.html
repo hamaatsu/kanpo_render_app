@@ -1,28 +1,28 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>記録詳細（v10）</title>
+<title>記録詳細</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
   .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
-  .tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#f4f4f4;margin:2px 6px 2px 0;font-size:13px}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:pre-wrap}
   table{border-collapse:collapse;width:100%}
   th,td{border:1px solid #eee;padding:8px;vertical-align:top}
-  img{max-width:220px;height:auto;margin:6px;border:1px solid #ddd;border-radius:6px}
-  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:pre-wrap}
   .chips span{display:inline-block;background:#f5f5f5;border-radius:999px;padding:4px 10px;margin:2px}
 </style>
 </head>
 <body>
-<h1>記録詳細（v10）</h1>
+
+<h2>記録詳細</h2>
+<div class="mono">レコードID: {{ data.id }}　/　受理: {{ data.submitted_at }}</div>
 
 <div class="block">
   <h3>患者情報</h3>
   <div>氏名: {{ data.patient.name }}　/　年齢: {{ data.patient.age }}　/　性別: {{ data.patient.sex }}　/　地域: {{ data.patient.region }}</div>
-  <div>主訴: {{ data.patient.chief_complaint or "（未記入）" }}</div>
-  <div>レコードID: <code>{{ data.id }}</code>　/　受理: {{ data.submitted_at }}</div>
+  <div>主訴: {{ data.patient.chief_complaint }}</div>
 </div>
 
 {% set pre = data.ai_assessment %}
@@ -33,7 +33,6 @@
   <h4>提案候補（上位3）</h4>
   <table>
     <tr><th style="width:14em">方剤</th><th>薬剤師メモ／AI理由・生活・薬膳</th></tr>
-    {% set pre = data.ai_assessment %}
     {% for c in pre.candidates %}
       <tr>
         <td>
@@ -43,18 +42,26 @@
         <td>
           {% if c.pharmacist_tip %}<div class="mono">薬剤師メモ：{{ c.pharmacist_tip }}</div>{% endif %}
           {% if c.ai_reason %}<div>AI理由：{{ c.ai_reason }}</div>{% endif %}
-          {% if c.script.explain %}<div>患者向け説明：{{ c.script.explain }}</div>{% endif %}
-          {% if c.lifestyle %}<div>生活：<div class="chips">{% for x in c.lifestyle %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
-          {% if c.foods_good %}<div>薬膳：推奨<div class="chips">{% for x in c.foods_good %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
-          {% if c.foods_avoid %}<div>薬膳：控える<div class="chips">{% for x in c.foods_avoid %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
-          {% if c.counsel_points %}<div>面談で深掘り：<div class="chips">{% for x in c.counsel_points %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
+          {% if c.script and c.script.explain %}<div>患者向け説明：{{ c.script.explain }}</div>{% endif %}
+          {% if c.lifestyle %}
+            <div>生活：<div class="chips">{% for x in c.lifestyle %}<span>{{ x }}</span>{% endfor %}</div></div>
+          {% endif %}
+          {% if c.foods_good %}
+            <div>薬膳：推奨<div class="chips">{% for x in c.foods_good %}<span>{{ x }}</span>{% endfor %}</div></div>
+          {% endif %}
+          {% if c.foods_avoid %}
+            <div>薬膳：控える<div class="chips">{% for x in c.foods_avoid %}<span>{{ x }}</span>{% endfor %}</div></div>
+          {% endif %}
+          {% if c.counsel_points %}
+            <div>面談で深掘り：<div class="chips">{% for x in c.counsel_points %}<span>{{ x }}</span>{% endfor %}</div></div>
+          {% endif %}
         </td>
       </tr>
     {% endfor %}
   </table>
 
   <h2>推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
-  <div class="mono">選定理由：{{ (pre.reasons or [])|join(" / ") }}</div>
+  <div class="mono">選定理由：{{ pre.reasons|default('', true) }}</div>
   <div class="mono">{{ pre.chief_note }}</div>
 </div>
 
@@ -64,13 +71,14 @@
     {% for sec in pre.complaint_sections %}
       <h4>{{ sec.title }}</h4>
       <ul>
-        <li><b>背景/考え方：</b> {{ sec.background|join(" / ") }}</li>
-        <li><b>まず試す：</b> {{ sec.do|join("、 ") }}</li>
-        <li><b>良い食材：</b> {{ sec.foods_good|join("・") }}</li>
-        <li><b>避けたい：</b> {{ sec.avoid|join("、 ") }} / <b>避けたい食材：</b> {{ sec.foods_avoid|join("・") }}</li>
-        <li><b>生活のポイント：</b> {{ sec.points|join(" / ") }}</li>
-        <li><b>ツボ：</b> {{ sec.acupoints|join("・") }}</li>
-        <li><b>受診の目安：</b> {{ sec.danger|join(" / ") }}</li>
+        {% if sec.background %}<li><b>背景/考え方：</b> {{ sec.background }}</li>{% endif %}
+        {% if sec.do %}<li><b>まず試す：</b> {{ sec.do|join("、 ") }}</li>{% endif %}
+        {% if sec.foods_good %}<li><b>良い食材：</b> {{ sec.foods_good|join("・") }}</li>{% endif %}
+        {% if sec.avoid %}<li><b>避けたい：</b> {{ sec.avoid|join("、 ") }}</li>{% endif %}
+        {% if sec.foods_avoid %}<li><b>避けたい食材：</b> {{ sec.foods_avoid|join("・") }}</li>{% endif %}
+        {% if sec.points %}<li><b>生活のポイント：</b> {{ sec.points|join(" / ") }}</li>{% endif %}
+        {% if sec.acupoints %}<li><b>ツボ：</b> {{ sec.acupoints|join("・") }}</li>{% endif %}
+        {% if sec.danger %}<li><b>受診の目安：</b> {{ sec.danger|join(" / ") }}</li>{% endif %}
       </ul>
       <hr>
     {% endfor %}
@@ -109,53 +117,6 @@
   {% else %}
     <div>（特記なし）</div>
   {% endif %}
-</div>
-
-<div class="block">
-  <h3>説明スクリプト（読み上げ用）</h3>
-  <ul>
-    <li><strong>方剤の説明：</strong> {{ pre.script.explain or "—" }}</li>
-    <li><strong>生活アドバイス：</strong> {{ pre.script.lifestyle or "—" }}</li>
-    <li><strong>注意/フォロー：</strong> {{ pre.script.watch or "—" }}</li>
-  </ul>
-</div>
-
-<div class="block">
-  <h3>判定された証（パターン）</h3>
-  <table>
-    <tr>
-      <th style="width:150px">八綱</th>
-      <td>
-        <span class="tag">実虚: {{ pre.axes["実虚"] or "—" }}</span>
-        <span class="tag">寒熱: {{ pre.axes["寒熱"] or "—" }}</span>
-        <span class="tag">表裏: {{ pre.axes["表裏"] or "—" }}</span>
-      </td>
-    </tr>
-    <tr>
-      <th>気血水</th>
-      <td>
-        <span class="tag">気: {{ pre.qxs["気"] or "—" }}</span>
-        <span class="tag">血: {{ pre.qxs["血"] or "—" }}</span>
-        <span class="tag">水: {{ pre.qxs["水"] or "—" }}</span>
-      </td>
-    </tr>
-    <tr>
-      <th>視診補助（画像あり：所見の活かし方）</th>
-      <td>
-        {% for note in pre.image_notes %}<div class="tag">{{ note }}</div>{% endfor %}
-        {% if not pre.image_notes %}<div>（画像なし）</div>{% endif %}
-      </td>
-    </tr>
-  </table>
-</div>
-
-<div class="block">
-  
-      {% endif %}
-    {% else %}
-      <div>（画像なし）</div>
-    {% endif %}
-  {% endfor %}
 </div>
 
 <p><a href="/admin">一覧へ</a> ｜ <a href="/">新規登録へ</a></p>
