@@ -86,39 +86,64 @@ def rule_advice(chief, sex):
         }
     return None
 
-def ai_advice(patient, axes, qxs, vis, formula):
+def ai_generate_advice(patient, axes, qxs, vis, chosen_formula):
     if not OPENAI_API_KEY:
-        return None, "API未設定（ルールベースで対応中）"
+        return None, "APIキー未設定のためルールベースで対応"
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)  # proxies など余計な引数は渡さない
-        prompt = f\"\"\"あなたは漢方カウンセラーです。主訴に直結する実践的アドバイスをJSONで返してください。
-[入力]
-主訴: {patient.get('chief_complaint','')}
-性別: {patient.get('sex','')}
-八綱: {axes}
-気血水: {qxs}
-視診: {vis}
-選定方剤: {formula}
+        # proxies など余計な引数は渡さない
+        client = OpenAI(api_key=OPENAI_API_KEY)
 
-[出力JSON]
-{{"title":"","background":"","try_first":[],"foods_good":[],"foods_avoid":[],"lifestyle":[],"points":[],"kampo_hint":"","careful":[]}}\"\"\"
+        # ---- ここから安全なプロンプト組み立て（f文字列で {} を使わない）----
+        chief = patient.get('chief_complaint', '')
+        sex_ = patient.get('sex', '')
+
+        prompt = (
+            "あなたは漢方相談のカウンセラーです。以下の主訴と体質所見から、"
+            "主訴に直結するアドバイスを日本語でJSON出力してください。\n"
+            "制約：結論先出し・即実践できる提案・過度に一般論にせず主訴に寄り添う。"
+            "男性の場合は月経言及なし。\n\n"
+            "[入力]\n"
+            f"主訴: {chief}\n"
+            f"性別: {sex_}\n"
+            f"八綱: {axes}\n"
+            f"気血水: {qxs}\n"
+            f"視診: {vis}\n"
+            f"選定方剤: {chosen_formula}\n\n"
+            "[出力JSONスキーマ]\n"
+            "{{\n"
+            '  "title": "短い見出し",\n'
+            '  "background": "背景説明（1-2文）",\n'
+            '  "try_first": ["まず試すこと", "..."],\n'
+            '  "foods_good": ["合う食材", "..."],\n'
+            '  "foods_avoid": ["避けたい食材", "..."],\n'
+            '  "lifestyle": ["生活の工夫", "..."],\n'
+            '  "points": ["ツボ名", "..."],\n'
+            '  "kampo_hint": "（任意）方剤のヒント/注意",\n'
+            '  "careful": ["受診目安など"]\n'
+            "}}\n"
+        )
+        # ---- ここまで ----
+
         resp = client.chat.completions.create(
-            model=os.getenv("OPENAI_MODEL","gpt-4o-mini"),
+            model=OPENAI_MODEL,
             messages=[
-                {"role":"system","content":"あなたは安全で実用的な漢方カウンセラーです。"},
-                {"role":"user","content":prompt}
+                {"role": "system", "content": "あなたは安全で実践的な漢方カウンセラーです。"},
+                {"role": "user", "content": prompt}
             ],
             temperature=0.3,
         )
-        import json, re
         txt = resp.choices[0].message.content.strip()
-        m = re.search(r"\{.*\}", txt, re.S)
+
+        m = re.search(r'\{.*\}', txt, re.S)
         if m:
-            return json.loads(m.group(0)), "AI生成"
-        return None, "AI応答解析不可"
+            data = json.loads(m.group(0))
+            return data, "AI生成成功"
+        else:
+            return None, "AI応答を解析できませんでした"
     except Exception as e:
         return None, f"AIエラー: {e}"
+
 
 def score_and_choose(form):
     # 軽量版スコア
