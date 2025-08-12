@@ -150,16 +150,7 @@
 </div>
 
 <div class="block">
-  <h3>アップロード画像</h3>
-  {% for part in ["tongue","face","body","nails"] %}
-    <h4>{{ {"tongue":"舌","face":"顔","body":"体・むくみ","nails":"爪"}[part] }}</h4>
-    {% if data.inspection_uploads[part] %}
-      {% for url in data.inspection_uploads[part] %}
-        <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="{{ part }}"></a>
-      {% endfor %}
-      {% set note_key = part + "_note" %}
-      {% if data.inspection_notes[note_key] %}
-        <div class="mono">所見メモ：{{ data.inspection_notes[note_key] }}</div>
+  
       {% endif %}
     {% else %}
       <div>（画像なし）</div>
