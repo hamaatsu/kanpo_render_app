@@ -1,7 +1,17 @@
-# 漢方AI問診 v11
-- 画像バグ修正：舌/顔/体/爪を正しい欄に表示
-- 主訴最優先：喉詰まり（梅核気）/雨頭痛/肉後下痢などの精密マッチ
-- AI助言（OpenAI、任意）：主訴に直結する助言をJSONで生成。失敗時はルールベースにフォールバック。
-- 右サイド初心者ガイド維持
-- 1剤のみ提示、男性で月経表現は非表示
-- 環境変数：OPENAI_API_KEY, OPENAI_MODEL
+# 漢方AI v11c（Render用フル一式）
+
+- Flask + waitress 起動
+- OpenAI は環境変数 OPENAI_API_KEY があればAI助言を生成。未設定ならルールベース。
+- Basic認証: BASIC_AUTH_USERNAME / BASIC_AUTH_PASSWORD（未設定は admin / changeme）
+
+## Render 設定
+- Start Command: `waitress-serve --host=0.0.0.0 --port=$PORT app:app`
+- Environment:
+  - (任意) OPENAI_API_KEY
+  - (任意) OPENAI_MODEL 例: gpt-4o-mini
+  - (任意) BASIC_AUTH_USERNAME, BASIC_AUTH_PASSWORD
+
+## デプロイ手順
+1. この一式をGitHubにコミット
+2. Render のサービスで Clear build cache & deploy
+3. `/` → フォーム入力 → 送信 → `/record/<id>` で結果表示
