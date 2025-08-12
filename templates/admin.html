@@ -1,8 +1,21 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>管理</title><link rel="stylesheet" href="/static/styles.css"></head>
-<body><div class="container">
-<h1>管理（最新200件）</h1>
-<table class="table"><thead><tr><th>受理</th><th>名前</th><th>主訴</th><th>リンク</th></tr></thead>
-<tbody>{% for it in items %}<tr><td>{{it.submitted_at}}</td><td>{{it.name}}</td><td>{{it.chief}}</td><td><a href="/record/{{it.id}}">詳細</a></td></tr>{% endfor %}</tbody></table>
-</div></body></html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>管理</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<header><h1>管理（最新200件）</h1></header>
+<section class="panel">
+<table class="list">
+<tr><th>受理</th><th>氏名</th><th>主訴</th><th>リンク</th></tr>
+{% for it in items %}
+<tr>
+<td>{{it.submitted_at}}</td>
+<td>{{it.name}}</td>
+<td>{{it.chief}}</td>
+<td><a href="/record/{{it.id}}">開く</a></td>
+</tr>
+{% endfor %}
+</table>
+</section>
+</body>
+</html>

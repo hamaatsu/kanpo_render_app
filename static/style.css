@@ -1,0 +1,27 @@
+:root{--bg:#0b1020;--panel:#121833;--text:#eef3ff;--muted:#9fb0d0;--accent:#7cc5ff;}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
+header,footer{padding:14px 18px;border-bottom:1px solid #253059}footer{border-top:1px solid #253059;border-bottom:none;text-align:center;color:var(--muted)}
+h1 small{color:var(--muted);font-size:.6em;margin-left:.4rem}
+.grid{display:grid;grid-template-columns:minmax(280px,1fr) 360px;gap:16px;align-items:start;padding:16px}
+.grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:16px;align-items:start;padding:16px}
+.panel{background:var(--panel);padding:16px;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.row{display:flex;gap:10px;align-items:center;margin:10px 0}
+.row>label{min-width:90px;color:var(--muted)}
+.row input[type=text],.row input[type=number],.row select,.row textarea{width:100%;padding:10px;border-radius:10px;border:1px solid #2a345b;background:#0e1430;color:var(--text)}
+.row.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.row.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.actions{margin-top:18px}
+button{background:linear-gradient(90deg,#4aa3ff,#9ae6ff);color:#00102a;border:none;padding:12px 18px;border-radius:12px;font-weight:700;cursor:pointer}
+button:hover{filter:brightness(1.08)}
+.guide details{margin:10px 0}
+.guide summary{cursor:pointer;color:#b8c8ff}
+.list{width:100%;border-collapse:collapse}
+.list th,.list td{padding:8px;border-bottom:1px solid #2a345b}
+pre.code{background:#0c1330;border:1px solid #222b55;padding:10px;border-radius:10px;overflow:auto}
+.imgs{display:flex;flex-wrap:wrap;gap:8px}
+.imgs img{width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid #2a345b}
+.advice{background:#0e1430;border:1px solid #22305a;border-radius:12px;padding:12px}
+.advice .bg{color:#d7e4ff}
+.advice .note{color:#f3d48a}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:960px){.grid,.grid2{grid-template-columns:1fr}}

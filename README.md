@@ -1,17 +1,16 @@
-# 漢方AI v11c（Render用フル一式）
+# 漢方AI問診 v11a（UI復元版）
 
-- Flask + waitress 起動
-- OpenAI は環境変数 OPENAI_API_KEY があればAI助言を生成。未設定ならルールベース。
-- Basic認証: BASIC_AUTH_USERNAME / BASIC_AUTH_PASSWORD（未設定は admin / changeme）
+- v11a期の「1画面問診＋右サイド初心者ガイド」UIを復元
+- 画像は **舌/顔/体・むくみ/爪** をカテゴリ別に保存・表示
+- AI助言は OpenAI API をセットした時のみ有効（未設定時はルールベース）
 
-## Render 設定
-- Start Command: `waitress-serve --host=0.0.0.0 --port=$PORT app:app`
-- Environment:
-  - (任意) OPENAI_API_KEY
-  - (任意) OPENAI_MODEL 例: gpt-4o-mini
-  - (任意) BASIC_AUTH_USERNAME, BASIC_AUTH_PASSWORD
+## 環境変数（Render -> Environment）
+- BASIC_AUTH_USERNAME=admin（任意）
+- BASIC_AUTH_PASSWORD=changeme（任意）
+- FLASK_SECRET=任意
+- OPENAI_API_KEY=sk-... （任意）
+- OPENAI_MODEL=gpt-4o-mini（任意）
 
-## デプロイ手順
-1. この一式をGitHubにコミット
-2. Render のサービスで Clear build cache & deploy
-3. `/` → フォーム入力 → 送信 → `/record/<id>` で結果表示
+## 起動
+- Render: Procfile で `gunicorn app:app` が動きます
+- ローカル: `pip install -r requirements.txt && python app.py`
