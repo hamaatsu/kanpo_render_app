@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>記録詳細（v10）</title>
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
+  .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
+  .tag{display:inline-block;padding:4px 8px;border-radius:999px;background:#f4f4f4;margin:2px 6px 2px 0;font-size:13px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #eee;padding:8px;vertical-align:top}
+  img{max-width:220px;height:auto;margin:6px;border:1px solid #ddd;border-radius:6px}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;white-space:pre-wrap}
+  .chips span{display:inline-block;background:#f5f5f5;border-radius:999px;padding:4px 10px;margin:2px}
+</style>
+</head>
+<body>
+<h1>記録詳細（v10）</h1>
+
+<div class="block">
+  <h3>患者情報</h3>
+  <div>氏名: {{ data.patient.name }}　/　年齢: {{ data.patient.age }}　/　性別: {{ data.patient.sex }}　/　地域: {{ data.patient.region }}</div>
+  <div>主訴: {{ data.patient.chief_complaint or "（未記入）" }}</div>
+  <div>レコードID: <code>{{ data.id }}</code>　/　受理: {{ data.submitted_at }}</div>
+</div>
+
+{% set pre = data.ai_assessment %}
+
+<div class="block">
+  <h3>AI提案（最終判断は薬剤師）</h3>
+  <h2>推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
+  <div class="mono">選定理由：{{ (pre.reasons or [])|join(" / ") }}</div>
+  <div class="mono">{{ pre.chief_note }}</div>
+</div>
+
+<div class="block">
+  <h3>主訴に直結するアドバイス</h3>
+  {% if pre.complaint_sections %}
+    {% for sec in pre.complaint_sections %}
+      <h4>{{ sec.title }}</h4>
+      <ul>
+        <li><b>背景/考え方：</b> {{ sec.background|join(" / ") }}</li>
+        <li><b>まず試す：</b> {{ sec.do|join("、 ") }}</li>
+        <li><b>良い食材：</b> {{ sec.foods_good|join("・") }}</li>
+        <li><b>避けたい：</b> {{ sec.avoid|join("、 ") }} / <b>避けたい食材：</b> {{ sec.foods_avoid|join("・") }}</li>
+        <li><b>生活のポイント：</b> {{ sec.points|join(" / ") }}</li>
+        <li><b>ツボ：</b> {{ sec.acupoints|join("・") }}</li>
+        <li><b>受診の目安：</b> {{ sec.danger|join(" / ") }}</li>
+      </ul>
+      <hr>
+    {% endfor %}
+  {% else %}
+    <div>主訴の具体性が不足しているため、一般的なアドバイスを表示しています。</div>
+  {% endif %}
+</div>
+
+<div class="block">
+  <h3>体質の説明（お客様向け）</h3>
+  <p>{{ pre.constitution }}</p>
+</div>
+
+<div class="block">
+  <h3>薬膳食材（体質に合わせた提案）</h3>
+  {% if pre.diet %}
+    <div class="chips">{% for f in pre.diet %}<span>{{ f }}</span>{% endfor %}</div>
+  {% else %}
+    <div>（特記なし）</div>
+  {% endif %}
+</div>
+
+<div class="block">
+  <h3>日常生活アドバイス</h3>
+  {% if pre.lifestyle %}
+    <ul>{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% else %}
+    <div>（特記なし）</div>
+  {% endif %}
+</div>
+
+<div class="block">
+  <h3>会話のきっかけ（話題ネタ）</h3>
+  {% if pre.topics %}
+    <ul>{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>
+  {% else %}
+    <div>（特記なし）</div>
+  {% endif %}
+</div>
+
+<div class="block">
+  <h3>説明スクリプト（読み上げ用）</h3>
+  <ul>
+    <li><strong>方剤の説明：</strong> {{ pre.script.explain or "—" }}</li>
+    <li><strong>生活アドバイス：</strong> {{ pre.script.lifestyle or "—" }}</li>
+    <li><strong>注意/フォロー：</strong> {{ pre.script.watch or "—" }}</li>
+  </ul>
+</div>
+
+<div class="block">
+  <h3>判定された証（パターン）</h3>
+  <table>
+    <tr>
+      <th style="width:150px">八綱</th>
+      <td>
+        <span class="tag">実虚: {{ pre.axes["実虚"] or "—" }}</span>
+        <span class="tag">寒熱: {{ pre.axes["寒熱"] or "—" }}</span>
+        <span class="tag">表裏: {{ pre.axes["表裏"] or "—" }}</span>
+      </td>
+    </tr>
+    <tr>
+      <th>気血水</th>
+      <td>
+        <span class="tag">気: {{ pre.qxs["気"] or "—" }}</span>
+        <span class="tag">血: {{ pre.qxs["血"] or "—" }}</span>
+        <span class="tag">水: {{ pre.qxs["水"] or "—" }}</span>
+      </td>
+    </tr>
+    <tr>
+      <th>視診補助（画像あり：所見の活かし方）</th>
+      <td>
+        {% for note in pre.image_notes %}<div class="tag">{{ note }}</div>{% endfor %}
+        {% if not pre.image_notes %}<div>（画像なし）</div>{% endif %}
+      </td>
+    </tr>
+  </table>
+</div>
+
+<div class="block">
+  <h3>アップロード画像</h3>
+  {% for part in ["tongue","face","body","nails"] %}
+    <h4>{{ {"tongue":"舌","face":"顔","body":"体・むくみ","nails":"爪"}[part] }}</h4>
+    {% if data.inspection_uploads[part] %}
+      {% for url in data.inspection_uploads[part] %}
+        <a href="{{ url }}" target="_blank"><img src="{{ url }}" alt="{{ part }}"></a>
+      {% endfor %}
+      {% set note_key = part + "_note" %}
+      {% if data.inspection_notes[note_key] %}
+        <div class="mono">所見メモ：{{ data.inspection_notes[note_key] }}</div>
+      {% endif %}
+    {% else %}
+      <div>（画像なし）</div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<p><a href="/admin">一覧へ</a> ｜ <a href="/">新規登録へ</a></p>
+</body>
+</html>
