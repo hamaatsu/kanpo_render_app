@@ -1,23 +1,19 @@
 body {
-    font-family: Arial, sans-serif;
-    background-color: #f9f9f9;
-    margin: 0;
-    padding: 0;
+    font-family: sans-serif;
+    margin: 20px;
+    background: #f4f4f4;
 }
-.container {
-    max-width: 800px;
-    margin: auto;
-    background: white;
-    padding: 20px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+h1, h2 {
+    color: #333;
+}
+textarea, select, input[type="file"], button {
+    display: block;
+    margin-bottom: 15px;
+    padding: 8px;
 }
 button {
-    padding: 10px 20px;
-    background-color: #4CAF50;
+    background: #4caf50;
     color: white;
     border: none;
-    cursor: pointer;
-}
-button:hover {
-    background-color: #45a049;
+    padding: 10px 20px;
 }
