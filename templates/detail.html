@@ -29,6 +29,28 @@
 
 <div class="block">
   <h3>AI提案（最終判断は薬剤師）</h3>
+  <h4>提案候補（上位3）</h4>
+  <table>
+    <tr><th style="width:14em">方剤</th><th>薬剤師メモ／AI理由・生活・薬膳</th></tr>
+    {% for c in data.ai_assessment.candidates %}
+      <tr>
+        <td>
+          <div style="font-weight:600">{{ loop.index }}位：{{ c.name }}</div>
+          <div class="mono">score: {{ c.score }}</div>
+        </td>
+        <td>
+          {% if c.pharmacist_tip %}<div class="mono">薬剤師メモ：{{ c.pharmacist_tip }}</div>{% endif %}
+          {% if c.ai_reason %}<div>AI理由：{{ c.ai_reason }}</div>{% endif %}
+          {% if c.script.explain %}<div>患者向け説明：{{ c.script.explain }}</div>{% endif %}
+          {% if c.lifestyle %}<div>生活：<div class="chips">{% for x in c.lifestyle %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
+          {% if c.foods_good %}<div>薬膳：推奨<div class="chips">{% for x in c.foods_good %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
+          {% if c.foods_avoid %}<div>薬膳：控える<div class="chips">{% for x in c.foods_avoid %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
+          {% if c.counsel_points %}<div>面談で深掘り：<div class="chips">{% for x in c.counsel_points %}<span>{{ x }}</span>{% endfor %}</div></div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
+
   <h2>推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
   <div class="mono">選定理由：{{ (pre.reasons or [])|join(" / ") }}</div>
   <div class="mono">{{ pre.chief_note }}</div>
@@ -125,12 +147,6 @@
   </table>
 </div>
 
-{% endif %}
-    {% else %}
-      <div>（画像なし）</div>
-    {% endif %}
-  {% endfor %}
-</div>
 
 <p><a href="/admin">一覧へ</a> ｜ <a href="/">新規登録へ</a></p>
 </body>
