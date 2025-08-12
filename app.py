@@ -450,7 +450,7 @@ def submit():
     return redirect(url_for("detail", rec_id=rec_id))
 
 @app.route
-("/record/<rec_id>")
+@app.route("/record/<rec_id>")
 @requires_auth
 def detail(rec_id):
     p = DATA_DIR / f"{rec_id}.json"
