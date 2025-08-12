@@ -299,6 +299,32 @@ def score_and_choose(form, uploads, sex):
         "竹葉石膏湯":{"explain":"熱をさましつつ消耗を補います。ほてり・口渇・だるさが同時にある時に。","lifestyle":"水分はこまめに。辛味の強い香辛料は控えめに。","watch":"冷えが強い日は合いにくいことがあります。"}
     }
 
+    # ランキング作成（上位3つ）
+    ranked = sorted(formulas.items(), key=lambda x: x[1], reverse=True)
+    top3 = [name for name,score in ranked[:3]]
+
+    # 薬剤師向けの選択基準メモ（簡潔）
+    pharmacist_tips = {
+        "補中益気湯": "だるさ強い・食欲低下・息切れ。脈弱／舌淡で虚の所見が明確なら第一候補。",
+        "六君子湯": "胃もたれ・食欲不振・軟便傾向。気虚＋痰湿（舌苔厚・胸脇つかえ）なら。",
+        "人参湯": "冷えで腹痛/下痢。温めると楽。寒が強く、虚寒の胃腸症状に寄るときに。",
+        "真武湯": "冷え＋むくみ＋めまい/軟便。腎陽虚寄りや水滞が前景のケースに。",
+        "五苓散": "口渇・尿少・むくみ・頭重。天候で悪化、二日酔い、水分偏在の訴えに。",
+        "当帰芍薬散": "冷え・貧血傾向・むくみ・ふらつき。産後/月経不順で虚が前景なら◎。",
+        "逍遙散": "ストレスで張る・情緒不安定・胸脇苦満。PMSや更年期の気滞に。",
+        "桂枝茯苓丸": "下腹部の抵抗・固定痛・肩こり・シミ/瘀斑。実寄りの瘀血徴候で。",
+        "竹葉石膏湯": "ほてり・口渇・だるさ同時。清熱と津液補充が要るときに。"
+    }
+
+    candidates = []
+    for name, score in ranked[:3]:
+        candidates.append({
+            "name": name,
+            "score": score,
+            "script": scripts.get(name, {}),
+            "pharmacist_tip": pharmacist_tips.get(name, "")
+        })
+
     axes = {"実虚": jitsu_kyo, "寒熱": kan_netsu, "表裏": hyo_ri}
     qxs = {"気": qi, "血": xue, "水": sui}
 
@@ -322,7 +348,8 @@ def score_and_choose(form, uploads, sex):
         })
 
     return {
-        "chosen": chosen,
+        "chosen": candidates[0]["name"] if candidates else None,
+        "candidates": candidates,
         "reasons": reasons,
         "script": scripts.get(chosen, {}),
         "axes": axes, "qxs": qxs,
@@ -334,28 +361,120 @@ def score_and_choose(form, uploads, sex):
         "image_notes": img_notes
     }
 
+# ---------------- AI再ランク＆助言生成 ----------------
+def ai_rerank_and_advice(form, sex, assessment):
+    """
+    OPENAI_API_KEY が設定されていれば、LLMで candidates を再ランクし、
+    理由・薬膳・生活・面談ポイントを生成して返す。
+    キーが無い場合はそのまま返す（後方互換）。
+    """
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return assessment
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        # 入力を要約してプロンプト作成
+        axes = assessment.get("axes",{})
+        qxs = assessment.get("qxs",{})
+        candidates = assessment.get("candidates",[])
+        chief = form.get("chief_complaint","").strip()
+        age = form.get("age",""); region = form.get("region","")
+
+        sys_prompt = (
+            "あなたは漢方薬局のベテラン薬剤師です。"
+            "以下の情報（主訴・体質軸・候補）を踏まえて、候補を再ランクし、"
+            "各候補について1)選定理由、2)薬膳食材（推奨/控える）、3)生活アドバイス、4)面談の掘り下げポイントを日本語で簡潔に出力します。"
+            "薬機法に配慮し断定表現を避け、一般向け助言は安全側で。"
+        )
+
+        user = {
+            "patient": {
+                "sex": sex, "age": age, "region": region,
+                "chief_complaint": chief,
+                "axes": axes, "qxs": qxs
+            },
+            "candidates": [c["name"] for c in candidates]
+        }
+
+        # モデル名はデプロイ環境で調整可能に。無ければデフォルト。
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        response = client.chat.completions.create(
+            model=model,
+            temperature=0.3,
+            messages=[
+                {"role":"system","content":sys_prompt},
+                {"role":"user","content":json.dumps(user, ensure_ascii=False)}
+            ]
+        )
+        content = response.choices[0].message.content
+
+        # ざっくりJSONを期待しつつ、失敗時はテキストをそのまま格納
+        parsed = None
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            parsed = {"llm_notes": content}
+
+        # 期待するフォーマット例：
+        # { "reranked": [{"name":"補中益気湯","reason":"..."},{"name":"六君子湯","reason":"..."}],
+        #   "advice": { "<方剤>": {"foods_good":[...],"foods_avoid":[...],"lifestyle":[...],"counsel_points":[...] } } }
+        reranked = parsed.get("reranked") if isinstance(parsed, dict) else None
+        advice = parsed.get("advice") if isinstance(parsed, dict) else {}
+
+        if reranked:
+            # 既存 candidates をスコア付け直し
+            score_map = {c["name"]: c["score"] for c in candidates}
+            new_cands = []
+            for i, item in enumerate(reranked):
+                name = item.get("name")
+                base_score = score_map.get(name, 0)
+                new_cands.append({
+                    "name": name,
+                    "score": base_score + max(0, 3 - i),  # 上位ほど少し加点
+                    "script": next((c["script"] for c in candidates if c["name"]==name), {}),
+                    "pharmacist_tip": next((c["pharmacist_tip"] for c in candidates if c["name"]==name), ""),
+                    "ai_reason": item.get("reason","")
+                })
+            # 助言をマージ
+            for c in new_cands:
+                adv = advice.get(c["name"], {})
+                c["foods_good"] = adv.get("foods_good", [])
+                c["foods_avoid"] = adv.get("foods_avoid", [])
+                c["lifestyle"] = adv.get("lifestyle", [])
+                c["counsel_points"] = adv.get("counsel_points", [])
+            assessment["candidates"] = new_cands
+            assessment["chosen"] = new_cands[0]["name"] if new_cands else assessment.get("chosen")
+
+        assessment["llm_raw"] = parsed
+        return assessment
+    except Exception as e:
+        # 失敗時はそのまま返す
+        assessment["llm_error"] = str(e)
+        return assessment
+
 # ---------------- ルーティング ----------------
 @app.route("/")
 def index():
     return render_template("index.html")
 
+
 @app.route("/submit", methods=["POST"])
 def submit():
     rec_id = str(uuid.uuid4())
-    uploads = {"tongue": [], "face": [], "body": [], "nails": []}
-    # proper mapping
-    pairs = [("tongue_images","tongue"),("face_images","face"),("body_images","body"),("nails_images","nails")]
-    for field,key in pairs:
-        files = request.files.getlist(field)
-        for f in files:
-            if not f or not getattr(f, "filename", ""): continue
-            fname = f"{rec_id}_{secure_filename(f.filename)}"
-            f.save(str(UPLOAD_DIR / fname))
-            uploads[key].append(f"/uploads/{fname}")
 
     form = request.form.to_dict()
     sex = form.get("sex","")
+    # 画像を使わない前提：uploadsは空
+    uploads = {"tongue": [], "face": [], "body": [], "nails": []}
+
+    # ルールベースで候補作成
     assessment = score_and_choose(form, uploads, sex)
+
+    # LLMで再ランク＆助言生成（環境変数があれば）
+    assessment = ai_rerank_and_advice(form, sex, assessment)
 
     record = {
         "id": rec_id,
@@ -367,17 +486,11 @@ def submit():
             "region": form.get("region",""),
             "chief_complaint": form.get("chief_complaint","")
         },
-        "ai_assessment": assessment,
-        "inspection_uploads": uploads,
-        "inspection_notes": {
-            "tongue_note": form.get("tongue_note",""),
-            "face_note": form.get("face_note",""),
-            "body_note": form.get("body_note",""),
-            "nails_note": form.get("nails_note","")
-        }
+        "ai_assessment": assessment
     }
     (DATA_DIR / f"{rec_id}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     return redirect(url_for("detail", rec_id=rec_id))
+
 
 @app.route("/record/<rec_id>")
 @requires_auth
