@@ -6,8 +6,9 @@ from flask import Flask, render_template, request, redirect, url_for, send_from_
 from werkzeug.utils import secure_filename
 
 APP_DIR = Path(__file__).resolve().parent
-UPLOAD_DIR = APP_DIR / "uploads"
-DATA_DIR = APP_DIR / "data"
+DATA_ROOT = Path(os.getenv("DATA_ROOT", "/tmp/kanpo_ai"))
+UPLOAD_DIR = DATA_ROOT / "uploads"
+DATA_DIR = DATA_ROOT / "data"
 UPLOAD_DIR.mkdir(exist_ok=True, parents=True)
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 
