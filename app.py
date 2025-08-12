@@ -16,6 +16,16 @@ BASIC_AUTH_USERNAME = os.getenv("BASIC_AUTH_USERNAME", "admin")
 BASIC_AUTH_PASSWORD = os.getenv("BASIC_AUTH_PASSWORD", "changeme")
 SECRET_KEY = os.getenv("FLASK_SECRET", "dev")
 
+
+# --- 性別に応じた注意文フィルタ（男性では妊娠関連を非表示） ---
+import re as _re_mod
+def _filter_script_for_sex(script, sex):
+    if not isinstance(script, dict):
+        return script
+    w = script.get("watch","") or ""
+    if (sex or "").lower() not in ["female","woman","女性","女"]:
+        w = _re_mod.sub(r"妊娠中[^。]*。?", "", w)
+    return {**script, "watch": w.strip()}
 app = Flask(__name__)
 app.config["SECRET_KEY"] = SECRET_KEY
 
@@ -244,6 +254,57 @@ def image_presence_notes(uploads, sex):
     # 男性への月経表現省略は別で実施
     return notes
 
+# --- LLMで候補を抽出（トップ5まで） ---
+def llm_pick_candidates(form, sex, axes, qxs, allowed_formulas):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return [], None  # キーが無ければ未実行
+    try:
+        from openai import OpenAI
+        import json as _json
+        client = OpenAI(api_key=api_key)
+
+        user = {
+            "sex": sex,
+            "age": form.get("age",""),
+            "region": form.get("region",""),
+            "chief": form.get("chief_complaint",""),
+            "axes": axes,
+            "qxs": qxs,
+            "allowed_formulas": list(allowed_formulas)
+        }
+
+        sys_prompt = (
+            "あなたは漢方薬局のベテラン薬剤師です。"
+            "主訴・体質軸（八綱/気血水/年齢/性別）を踏まえ、"
+            "allowed_formulas の中から最大5つの候補を選び、"
+            "各候補の『理由』を日本語で簡潔に付けてJSONで返してください。"
+            "出力例: {\\\"llm_candidates\\\":[{\\\"name\\\":\\\"葛根湯\\\",\\\"reason\\\":\\\"...\\\"},...]}"
+        )
+
+        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        resp = client.chat.completions.create(
+            model=model, temperature=0.2,
+            messages=[{"role":"system","content":sys_prompt},
+                      {"role":"user","content":_json.dumps(user, ensure_ascii=False)}]
+        )
+        content = resp.choices[0].message.content
+
+        try:
+            parsed = _json.loads(content)
+        except Exception:
+            parsed = {"llm_text": content}
+
+        cands = []
+        for it in (parsed.get("llm_candidates") or []):
+            name = it.get("name")
+            reason = it.get("reason","")
+            if name in allowed_formulas:
+                cands.append({"name": name, "reason": reason})
+        return cands, parsed
+    except Exception as e:
+        return [], {"llm_pick_error": str(e)}
+
 def score_and_choose(form, uploads, sex):
     checks = parse_checkboxes(form)
     qi=checks["qi"]; xue=checks["xue"]; sui=checks["sui"]
@@ -285,7 +346,31 @@ def score_and_choose(form, uploads, sex):
     if applied_profiles:
         reasons.append("主訴による補正：" + " / ".join([p["title"] for p in applied_profiles]))
 
-    chosen = max(formulas.items(), key=lambda x: x[1])[0]
+    
+    # --- LLM候補抽出と合成スコア（AI 0.7 : ルール 0.3） ---
+    use_llm = os.getenv("USE_LLM_CANDIDATES","1") not in ["0","false","False"]
+    llm_weight = float(os.getenv("LLM_WEIGHT","0.7"))
+    axes = {"jitsu_kyo": jitsu_kyo, "kan_netsu": kan_netsu, "hyo_ri": hyo_ri}
+    qxs  = {"qi": qi, "xue": xue, "sui": sui}
+    llm_cands, llm_log = ([], None)
+    if use_llm:
+        llm_cands, llm_log = llm_pick_candidates(form, sex, axes, qxs, formulas.keys())
+
+    # ルールスコアを0-1に正規化
+    _max = max(formulas.values()) if formulas else 1
+    norm = {k:(v/_max if _max>0 else 0.0) for k,v in formulas.items()}
+
+    # LLM順位を0-1スコアに変換（上位ほど1.0に近い）
+    order = {c["name"]: i for i,c in enumerate(llm_cands)}
+    n = max(len(llm_cands), 1)
+    llm_s = {name:(1.0 - (order[name]/n)) if name in order else 0.0 for name in formulas.keys()}
+
+    # 合成
+    combined = {name:(1-llm_weight)*norm.get(name,0.0) + llm_weight*llm_s.get(name,0.0) for name in formulas.keys()}
+    ranked = sorted(combined.items(), key=lambda x:x[1], reverse=True)
+    top3 = [name for name,_ in ranked[:3]]
+    chosen = top3[0] if top3 else max(formulas.items(), key=lambda x:x[1])[0]
+
 
     # scripts for chosen formula
     scripts = {
@@ -298,21 +383,33 @@ def score_and_choose(form, uploads, sex):
         "逍遙散":{"explain":"気の巡りを良くし、ストレス由来の張り・情緒の波を和らげます。","lifestyle":"深呼吸・軽いストレッチ・香りのあるお茶（ジャスミン/ミント）。","watch":"イライラが強すぎる・発熱がある時は別処方検討。"},
         "桂枝茯苓丸":{"explain":"血の滞りをさばきます。下腹部の張り・固定痛・肩こりに。","lifestyle":"体を冷やさない・適度な運動で巡りを助ける。","watch":"妊娠中は原則用いません。出血傾向は医師に相談。"},
         "竹葉石膏湯":{"explain":"熱をさましつつ消耗を補います。ほてり・口渇・だるさが同時にある時に。","lifestyle":"水分はこまめに。辛味の強い香辛料は控えめに。","watch":"冷えが強い日は合いにくいことがあります。"}
-  ,"葛根湯":{"explain":"首肩のこわばり・悪寒を伴う急性の肩こりに。風寒表証の初期に。","watch":"発汗過多や虚弱で汗が止まらない人は注意。高熱・脱水時は医療機関へ。"}
-,"疎経活血湯":{"explain":"慢性の肩こり・節々のこわばり。冷えで悪化・温めて楽などに。","watch":"胃弱の方は腹部症状に注意。長期連用は定期評価。"}
-,"川芎茶調散":{"explain":"肩こりを伴う慢性頭痛・気象病に。","watch":"のぼせ・口渇が強い時は他方検討。"}
-,"釣藤散":{"explain":"肩こり＋頭痛・めまい・高ぶりに。中高年の“イライラ型”に。","watch":"便秘・口渇が強い時は相性に注意。"}
     }
 
-
-# 性別に応じた注意文のフィルタ（例：妊娠関連は男性なら非表示）
-import re as _re_mod
-def _filter_script_for_sex(script, sex):
-    if not isinstance(script, dict): return script
-    w = script.get("watch","") or ""
-    if (sex or "").lower() not in ["female","woman","女性","女"]:
-        w = _re_mod.sub(r"妊娠中[^。]*。?", "", w)
-    return {**script, "watch": w.strip()}
+    # ランキング配列（上位3）
+    candidates = []
+    _reason_map = {c["name"]: c.get("reason","") for c in (llm_cands or []) if isinstance(c, dict)}
+    for name, _score in ranked[:3]:
+        candidates.append({
+            "name": name,
+            "score": round(float(_score), 3),
+            "script": _filter_script_for_sex(scripts.get(name, {}), sex),
+            "pharmacist_tip": {
+                "補中益気湯":"だるさ強い・食欲低下・息切れ。虚の所見が明確なら第一候補。",
+                "六君子湯":"胃もたれ・食欲不振・軟便傾向。気虚＋痰湿なら。",
+                "人参湯":"冷えで腹痛/下痢。温めると楽。虚寒の胃腸症状に。",
+                "真武湯":"冷え＋むくみ＋めまい/軟便。腎陽虚寄りや水滞に。",
+                "五苓散":"口渇・尿少・むくみ・頭重。天候で悪化や二日酔い。",
+                "当帰芍薬散":"冷え・貧血傾向・むくみ・ふらつき。産後/月経不順に。",
+                "逍遙散":"ストレスで張る・情緒不安定・胸脇苦満。PMSや更年期の気滞。",
+                "桂枝茯苓丸":"下腹部の抵抗・固定痛・肩こり・瘀斑。実寄りの瘀血。",
+                "竹葉石膏湯":"ほてり・口渇・だるさ同時。清熱と津液補充。",
+                "葛根湯":"急性の項背部こわばり＋悪寒・無汗。風寒表証。",
+                "疎経活血湯":"冷えで悪化する慢性肩こりや節々痛。水滞・瘀血。",
+                "川芎茶調散":"肩こり随伴の慢性頭痛・気象病。",
+                "釣藤散":"肩こり＋頭痛/めまい・イライラ。中高年の気逆。"
+            }.get(name, ""),
+            "ai_reason": _reason_map.get(name, "")
+        })
 
     axes = {"実虚": jitsu_kyo, "寒熱": kan_netsu, "表裏": hyo_ri}
     qxs = {"気": qi, "血": xue, "水": sui}
@@ -337,7 +434,8 @@ def _filter_script_for_sex(script, sex):
         })
 
     return {
-        "chosen": chosen,
+        "chosen": candidates[0]["name"] if candidates else chosen,
+        "candidates": candidates,
         "reasons": reasons,
         "script": scripts.get(chosen, {}),
         "axes": axes, "qxs": qxs,
@@ -349,102 +447,73 @@ def _filter_script_for_sex(script, sex):
         "image_notes": img_notes
     }
 
-
-# ---------------- AI再ランク＆助言生成（安全ガード版） ----------------
+# --- LLMで再ランクと助言生成（安全ガード） ---
 def ai_rerank_and_advice(form, sex, assessment):
-    # assessmentがNoneでも落ちないように初期化
     if not isinstance(assessment, dict):
         assessment = {}
-
     api_key = os.getenv("OPENAI_API_KEY")
-    # APIキーがなければ何もせず返す（フォールバック）
     if not api_key:
         return assessment
-
     try:
         from openai import OpenAI
         import json as _json
         client = OpenAI(api_key=api_key)
 
         axes = assessment.get("axes", {}) or {}
-        qxs = assessment.get("qxs", {}) or {}
+        qxs  = assessment.get("qxs", {}) or {}
         candidates = assessment.get("candidates", []) or []
-
-        chief = (form.get("chief_complaint", "") or "").strip()
-        age = (form.get("age", "") or "").strip()
-        region = (form.get("region", "") or "").strip()
+        chief = (form.get("chief_complaint","") or "").strip()
 
         sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
-            "主訴・体質軸・候補一覧から、候補を再ランクし、各候補の"
-            "1)選定理由、2)薬膳（推奨/控え）、3)生活アドバイス、4)面談の深掘りポイント、"
-            "5)患者向けの体質説明（初心者薬剤師でも読み上げやすい簡潔な文章）を日本語で作成してください。"
-            "性別に応じた表現にし、男性には妊娠関連の注意は出さないでください。"
-            "薬機法に配慮し断定を避け、安全側の助言にしてください。"
-            "JSONで返してください。"
+            "候補リストを再評価し、必要なら並べ替え、各候補の "
+            "理由・薬膳（推奨/控え）・生活・面談深掘り・患者向け体質説明をJSONで返してください。"
+            "男性には妊娠関連の注意は出さないでください。"
         )
 
-        user = {
-            "sex": sex, "age": age, "region": region,
-            "chief": chief, "axes": axes, "qxs": qxs,
-            "candidates": [c.get("name") for c in candidates if isinstance(c, dict)]
-        }
+        user = {"sex": sex, "chief": chief, "axes": axes, "qxs": qxs,
+                "candidates": [c.get("name") for c in candidates if isinstance(c, dict)]}
 
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         resp = client.chat.completions.create(
             model=model, temperature=0.3,
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": _json.dumps(user, ensure_ascii=False)}
-            ]
+            messages=[{"role":"system","content":sys_prompt},
+                      {"role":"user","content":_json.dumps(user, ensure_ascii=False)}]
         )
         content = resp.choices[0].message.content
 
-        # JSONとしてパースを試みる（失敗しても落とさない）
         try:
             parsed = _json.loads(content)
         except Exception:
             parsed = {"llm_text": content}
 
         reranked = parsed.get("reranked") if isinstance(parsed, dict) else None
-        advice = parsed.get("advice") if isinstance(parsed, dict) else {}
+        advice   = parsed.get("advice")   if isinstance(parsed, dict) else {}
         patient_summary = parsed.get("patient_summary") if isinstance(parsed, dict) else ""
 
-        # 再ランクが返ってきたらマージ
         if reranked:
-            score_map = {c.get("name"): c.get("score", 0) for c in candidates if isinstance(c, dict)}
-            def _orig(name):
-                for c in candidates:
-                    if isinstance(c, dict) and c.get("name") == name:
-                        return c
-                return {"script": {}, "pharmacist_tip": ""}
-
-            new_cands = []
+            base_map = {c.get("name"): c for c in candidates if isinstance(c, dict)}
+            new = []
             for i, item in enumerate(reranked):
                 name = item.get("name")
-                if not name:
-                    continue
-                base = score_map.get(name, 0)
-                orig = _orig(name)
-                # 性別に応じて注意文をフィルタ
-                script = _filter_script_for_sex(orig.get("script", {}), sex)
-                new_cands.append({
+                if not name: continue
+                base = base_map.get(name, {})
+                script = _filter_script_for_sex(base.get("script", {}), sex)
+                new.append({
                     "name": name,
-                    "score": base + max(0, 3 - i),
+                    "score": base.get("score", 0) + max(0, 3 - i),
                     "script": script,
-                    "pharmacist_tip": orig.get("pharmacist_tip", ""),
-                    "ai_reason": item.get("reason", ""),
+                    "pharmacist_tip": base.get("pharmacist_tip",""),
+                    "ai_reason": item.get("reason",""),
                     "foods_good": (advice.get(name, {}) or {}).get("foods_good", []),
                     "foods_avoid": (advice.get(name, {}) or {}).get("foods_avoid", []),
                     "lifestyle":  (advice.get(name, {}) or {}).get("lifestyle", []),
                     "counsel_points": (advice.get(name, {}) or {}).get("counsel_points", [])
                 })
+            if new:
+                assessment["candidates"] = new
+                assessment["chosen"] = new[0]["name"]
 
-            if new_cands:
-                assessment["candidates"] = new_cands
-                assessment["chosen"] = new_cands[0]["name"]
-
-        # 患者向け体質説明が得られたら追加
         if patient_summary:
             assessment["patient_summary"] = patient_summary
 
@@ -452,12 +521,7 @@ def ai_rerank_and_advice(form, sex, assessment):
         return assessment
 
     except Exception as e:
-        # 何があっても落とさない
-        msg = f"{type(e).__name__}: {e}"
-        if not isinstance(assessment, dict):
-            assessment = {}
-        assessment.setdefault("candidates", assessment.get("candidates", []) or [])
-        assessment["llm_error"] = msg
+        assessment["llm_error"] = f"{type(e).__name__}: {e}"
         return assessment
 
 # ---------------- ルーティング ----------------
@@ -465,15 +529,25 @@ def ai_rerank_and_advice(form, sex, assessment):
 def index():
     return render_template("index.html")
 
-
 @app.route("/submit", methods=["POST"])
 def submit():
     rec_id = str(uuid.uuid4())
+    uploads = {"tongue": [], "face": [], "body": [], "nails": []}
+    # proper mapping
+    pairs = [("tongue_images","tongue"),("face_images","face"),("body_images","body"),("nails_images","nails")]
+    for field,key in pairs:
+        files = request.files.getlist(field)
+        for f in files:
+            if not f or not getattr(f, "filename", ""): continue
+            fname = f"{rec_id}_{secure_filename(f.filename)}"
+            f.save(str(UPLOAD_DIR / fname))
+            uploads[key].append(f"/uploads/{fname}")
+
     form = request.form.to_dict()
     sex = form.get("sex","")
-    uploads = {"tongue": [], "face": [], "body": [], "nails": []}  # no images in this version
     assessment = score_and_choose(form, uploads, sex)
     assessment = ai_rerank_and_advice(form, sex, assessment)
+
     record = {
         "id": rec_id,
         "submitted_at": datetime.datetime.utcnow().isoformat() + "Z",
@@ -484,12 +558,18 @@ def submit():
             "region": form.get("region",""),
             "chief_complaint": form.get("chief_complaint","")
         },
-        "ai_assessment": assessment
+        "ai_assessment": assessment,
+        "inspection_uploads": uploads,
+        "inspection_notes": {
+            "tongue_note": form.get("tongue_note",""),
+            "face_note": form.get("face_note",""),
+            "body_note": form.get("body_note",""),
+            "nails_note": form.get("nails_note","")
+        }
     }
     (DATA_DIR / f"{rec_id}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     return redirect(url_for("detail", rec_id=rec_id))
 
-@app.route
 @app.route("/record/<rec_id>")
 @requires_auth
 def detail(rec_id):

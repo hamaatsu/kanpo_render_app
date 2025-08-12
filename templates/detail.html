@@ -29,10 +29,12 @@
 
 <div class="block">
   <h3>AI提案（最終判断は薬剤師）</h3>
+
   <h4>提案候補（上位3）</h4>
   <table>
     <tr><th style="width:14em">方剤</th><th>薬剤師メモ／AI理由・生活・薬膳</th></tr>
-    {% for c in data.ai_assessment.candidates %}
+    {% set pre = data.ai_assessment %}
+    {% for c in pre.candidates %}
       <tr>
         <td>
           <div style="font-weight:600">{{ loop.index }}位：{{ c.name }}</div>
@@ -72,6 +74,7 @@
       </ul>
       <hr>
     {% endfor %}
+  {% else %}
     <div>主訴の具体性が不足しているため、一般的なアドバイスを表示しています。</div>
   {% endif %}
 </div>
@@ -85,6 +88,7 @@
   <h3>薬膳食材（体質に合わせた提案）</h3>
   {% if pre.diet %}
     <div class="chips">{% for f in pre.diet %}<span>{{ f }}</span>{% endfor %}</div>
+  {% else %}
     <div>（特記なし）</div>
   {% endif %}
 </div>
@@ -93,6 +97,7 @@
   <h3>日常生活アドバイス</h3>
   {% if pre.lifestyle %}
     <ul>{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% else %}
     <div>（特記なし）</div>
   {% endif %}
 </div>
@@ -101,6 +106,7 @@
   <h3>会話のきっかけ（話題ネタ）</h3>
   {% if pre.topics %}
     <ul>{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>
+  {% else %}
     <div>（特記なし）</div>
   {% endif %}
 </div>
@@ -155,6 +161,7 @@
       {% if data.inspection_notes[note_key] %}
         <div class="mono">所見メモ：{{ data.inspection_notes[note_key] }}</div>
       {% endif %}
+    {% else %}
       <div>（画像なし）</div>
     {% endif %}
   {% endfor %}
