@@ -350,38 +350,57 @@ def _filter_script_for_sex(script, sex):
     }
 
 
-# ---------------- AI再ランク＆助言生成 ----------------
+# ---------------- AI再ランク＆助言生成（安全ガード版） ----------------
 def ai_rerank_and_advice(form, sex, assessment):
+    # assessmentがNoneでも落ちないように初期化
+    if not isinstance(assessment, dict):
+        assessment = {}
+
     api_key = os.getenv("OPENAI_API_KEY")
+    # APIキーがなければ何もせず返す（フォールバック）
     if not api_key:
         return assessment
+
     try:
         from openai import OpenAI
         import json as _json
         client = OpenAI(api_key=api_key)
-        axes = assessment.get("axes",{}); qxs = assessment.get("qxs",{})
-        candidates = assessment.get("candidates",[])
-        chief = (form.get("chief_complaint","") or "").strip()
+
+        axes = assessment.get("axes", {}) or {}
+        qxs = assessment.get("qxs", {}) or {}
+        candidates = assessment.get("candidates", []) or []
+
+        chief = (form.get("chief_complaint", "") or "").strip()
+        age = (form.get("age", "") or "").strip()
+        region = (form.get("region", "") or "").strip()
+
         sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
             "主訴・体質軸・候補一覧から、候補を再ランクし、各候補の"
             "1)選定理由、2)薬膳（推奨/控え）、3)生活アドバイス、4)面談の深掘りポイント、"
-            "5)患者向け『体質の説明』を簡潔に作成してください。"
-            "性別に応じた表現にし、男性には妊娠関連の注意を出さないでください。"
+            "5)患者向けの体質説明（初心者薬剤師でも読み上げやすい簡潔な文章）を日本語で作成してください。"
+            "性別に応じた表現にし、男性には妊娠関連の注意は出さないでください。"
             "薬機法に配慮し断定を避け、安全側の助言にしてください。"
             "JSONで返してください。"
         )
+
         user = {
-            "sex": sex, "chief": chief, "axes": axes, "qxs": qxs,
-            "candidates": [c["name"] for c in candidates]
+            "sex": sex, "age": age, "region": region,
+            "chief": chief, "axes": axes, "qxs": qxs,
+            "candidates": [c.get("name") for c in candidates if isinstance(c, dict)]
         }
+
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         resp = client.chat.completions.create(
             model=model, temperature=0.3,
-            messages=[{"role":"system","content":sys_prompt},
-                      {"role":"user","content":_json.dumps(user, ensure_ascii=False)}]
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": _json.dumps(user, ensure_ascii=False)}
+            ]
         )
         content = resp.choices[0].message.content
+
+        # JSONとしてパースを試みる（失敗しても落とさない）
         try:
             parsed = _json.loads(content)
         except Exception:
@@ -391,33 +410,54 @@ def ai_rerank_and_advice(form, sex, assessment):
         advice = parsed.get("advice") if isinstance(parsed, dict) else {}
         patient_summary = parsed.get("patient_summary") if isinstance(parsed, dict) else ""
 
+        # 再ランクが返ってきたらマージ
         if reranked:
-            score_map = {c["name"]: c["score"] for c in candidates}
+            score_map = {c.get("name"): c.get("score", 0) for c in candidates if isinstance(c, dict)}
+            def _orig(name):
+                for c in candidates:
+                    if isinstance(c, dict) and c.get("name") == name:
+                        return c
+                return {"script": {}, "pharmacist_tip": ""}
+
             new_cands = []
             for i, item in enumerate(reranked):
                 name = item.get("name")
+                if not name:
+                    continue
                 base = score_map.get(name, 0)
-                # merge existing
-                orig = next((c for c in candidates if c["name"]==name), None) or {"script":{},"pharmacist_tip":""}
+                orig = _orig(name)
+                # 性別に応じて注意文をフィルタ
+                script = _filter_script_for_sex(orig.get("script", {}), sex)
                 new_cands.append({
                     "name": name,
                     "score": base + max(0, 3 - i),
-                    "script": _filter_script_for_sex(orig.get("script", {}), sex),
-                    "pharmacist_tip": orig.get("pharmacist_tip",""),
-                    "ai_reason": item.get("reason",""),
-                    "foods_good": advice.get(name,{}).get("foods_good",[]),
-                    "foods_avoid": advice.get(name,{}).get("foods_avoid",[]),
-                    "lifestyle": advice.get(name,{}).get("lifestyle",[]),
-                    "counsel_points": advice.get(name,{}).get("counsel_points",[])
+                    "script": script,
+                    "pharmacist_tip": orig.get("pharmacist_tip", ""),
+                    "ai_reason": item.get("reason", ""),
+                    "foods_good": (advice.get(name, {}) or {}).get("foods_good", []),
+                    "foods_avoid": (advice.get(name, {}) or {}).get("foods_avoid", []),
+                    "lifestyle":  (advice.get(name, {}) or {}).get("lifestyle", []),
+                    "counsel_points": (advice.get(name, {}) or {}).get("counsel_points", [])
                 })
-            assessment["candidates"] = new_cands
-            assessment["chosen"] = new_cands[0]["name"] if new_cands else assessment.get("chosen")
+
+            if new_cands:
+                assessment["candidates"] = new_cands
+                assessment["chosen"] = new_cands[0]["name"]
+
+        # 患者向け体質説明が得られたら追加
         if patient_summary:
             assessment["patient_summary"] = patient_summary
+
         assessment["llm_raw"] = parsed
         return assessment
+
     except Exception as e:
-        assessment["llm_error"] = str(e)
+        # 何があっても落とさない
+        msg = f"{type(e).__name__}: {e}"
+        if not isinstance(assessment, dict):
+            assessment = {}
+        assessment.setdefault("candidates", assessment.get("candidates", []) or [])
+        assessment["llm_error"] = msg
         return assessment
 
 # ---------------- ルーティング ----------------
