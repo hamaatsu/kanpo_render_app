@@ -1,45 +1,429 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>症状チェックAI</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>漢方AI問診 v12（初心者ガイド付きUI）</title>
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#111827; --panel2:#0b1222; --text:#f8fafc; --muted:#cbd5e1;
+      --accent:#22c55e; --accent2:#38bdf8; --danger:#ef4444; --line:#1f2937;
+    }
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+    .container{max-width:1080px;margin:24px auto;padding:0 16px;}
+    h1{font-size:22px;margin:0 0 16px}
+    h2{font-size:18px;margin:24px 0 12px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+    .row{display:grid;grid-template-columns:1fr;gap:12px}
+    @media(min-width:900px){.row-2{grid-template-columns:1fr 1fr}.row-3{grid-template-columns:1fr 1fr 1fr}}
+    label{display:block;font-size:12px;color:var(--muted);margin:2px 0 6px}
+    input[type=text],input[type=number],select,textarea{
+      width:100%;background:#0b1020;color:var(--text);border:1px solid var(--line);
+      border-radius:10px;padding:10px;outline:none
+    }
+    textarea{min-height:90px}
+    .hint{font-size:12px;color:var(--muted)}
+    .radio-line, .check-line{display:flex;flex-wrap:wrap;gap:10px}
+    .radio-line label, .check-line label{display:flex;align-items:center;gap:6px;background:var(--panel2);
+      border:1px solid var(--line);padding:6px 10px;border-radius:10px;cursor:pointer;font-size:13px}
+    .side{position:sticky;top:10px}
+    details{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px}
+    details+details{margin-top:10px}
+    summary{cursor:pointer;color:var(--muted)}
+    .grid-2{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:980px){.grid-2{grid-template-columns:2fr 1fr}}
+    .actions{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{appearance:none;border:0;border-radius:12px;padding:10px 14px;cursor:pointer;font-weight:600}
+    .primary{background:var(--accent);color:#06250f}
+    .ghost{background:#0b1020;color:var(--muted);border:1px solid var(--line)}
+    .upload{display:grid;grid-template-columns:1fr;gap:12px}
+    .preview{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+    .preview img{width:100%;height:140px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+    .helper{font-size:12px;line-height:1.6}
+  </style>
 </head>
 <body>
-<div class="container">
-    <h1>症状チェック</h1>
-    <form id="symptomForm">
-        <label><input type="checkbox" name="symptom" value="頭痛"> 頭痛</label><br>
-        <label><input type="checkbox" name="symptom" value="発熱"> 発熱</label><br>
-        <label><input type="checkbox" name="symptom" value="咳"> 咳</label><br>
-        <label><input type="checkbox" name="symptom" value="喉の痛み"> 喉の痛み</label><br>
-        <button type="submit">AI提案を見る</button>
+  <div class="container">
+    <h1>漢方AI問診 v12（初心者ガイド付きUI）</h1>
+
+    <form method="post" action="/submit" enctype="multipart/form-data">
+      <div class="grid-2">
+        <!-- 左：問診 -->
+        <div>
+          <!-- 基本情報 -->
+          <div class="card">
+            <h2>基本情報</h2>
+            <div class="row row-3">
+              <div><label>氏名</label><input name="name" type="text" placeholder="例）山田 花子" /></div>
+              <div><label>年齢</label><input name="age" type="number" min="0" placeholder="35" /></div>
+              <div>
+                <label>性別</label>
+                <select name="sex">
+                  <option value="">--</option>
+                  <option value="female">female</option>
+                  <option value="male">male</option>
+                </select>
+              </div>
+            </div>
+            <div class="row row-2" style="margin-top:10px">
+              <div><label>地域</label><input name="region" type="text" placeholder="例）東京" /></div>
+              <div>
+                <label>主訴（いちばん困っていること）</label>
+                <input name="chief_complaint" type="text" placeholder="例）雨の日に喉が詰まった感じがする / 肉を食べると15分後に下痢…など" />
+                <div class="hint">主訴は AI 助言やアドバイスに最優先で反映されます。</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 初心者モード：症状チェック→自動反映 -->
+          <div class="card">
+            <div style="display:flex;align-items:center;gap:10px">
+              <h2 style="margin:0">初心者モード（症状チェック → 自動判定）</h2>
+              <button id="reflectBtn" type="button" class="btn ghost">反映する</button>
+            </div>
+
+            <div class="row row-2" style="margin-top:8px">
+              <!-- 寒熱 -->
+              <div>
+                <label>寒・熱　<span class="hint">チェックに応じて <b>寒/中庸/熱</b> を自動選択</span></label>
+                <div class="check-line" id="coldSigns">
+                  <label><input type="checkbox" value="cold"> 冷え</label>
+                  <label><input type="checkbox" value="chills"> 悪寒</label>
+                  <label><input type="checkbox" value="warm_better"> 温めると楽</label>
+                  <label><input type="checkbox" value="loose"> 下痢気味</label>
+                  <label><input type="checkbox" value="clear_urine"> 尿が透明</label>
+                </div>
+                <div class="check-line" id="heatSigns" style="margin-top:6px">
+                  <label><input type="checkbox" value="hot"> ほてり</label>
+                  <label><input type="checkbox" value="sweat"> 発汗</label>
+                  <label><input type="checkbox" value="thirst"> 口渇</label>
+                  <label><input type="checkbox" value="yellow_urine"> 黄尿</label>
+                  <label><input type="checkbox" value="constipation"> 便秘ぎみ</label>
+                </div>
+              </div>
+
+              <!-- 実虚 -->
+              <div>
+                <label>実・虚　<span class="hint">チェックに応じて <b>実/中間/虚</b> を自動選択</span></label>
+                <div class="check-line" id="defSigns">
+                  <label><input type="checkbox" value="fatigue"> だるい・疲れやすい</label>
+                  <label><input type="checkbox" value="weakvoice"> 声小さい</label>
+                  <label><input type="checkbox" value="sob"> 息切れ</label>
+                  <label><input type="checkbox" value="aftermeal_sleepy"> 食後に眠い</label>
+                </div>
+                <div class="check-line" id="exSigns" style="margin-top:6px">
+                  <label><input type="checkbox" value="fixed_pain"> 刺す痛み</label>
+                  <label><input type="checkbox" value="distend"> 張る/詰まる</label>
+                  <label><input type="checkbox" value="irritable"> いらだち・焦り</label>
+                  <label><input type="checkbox" value="constipation2"> 便秘</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- 気血水 代表サイン -->
+            <div class="row row-3" style="margin-top:12px">
+              <div>
+                <label>気（代表サイン）</label>
+                <div class="check-line" id="qiSigns">
+                  <label><input type="checkbox" value="qi_def"> だるい/息切れ/食後眠い</label>
+                  <label><input type="checkbox" value="qi_stag"> 張る/ため息/ストレスで悪化</label>
+                  <label><input type="checkbox" value="qi_rev"> のぼせ・げっぷ/胸やけ</label>
+                </div>
+              </div>
+              <div>
+                <label>血（代表サイン）</label>
+                <div class="check-line" id="xueSigns">
+                  <label><input type="checkbox" value="xue_def"> 乾燥/めまい/不眠</label>
+                  <label><input type="checkbox" value="xue_stasis"> 刺す痛み/肩こり/冷えのぼせ</label>
+                </div>
+              </div>
+              <div>
+                <label>水（代表サイン）</label>
+                <div class="check-line" id="suiSigns">
+                  <label><input type="checkbox" value="sui_ret"> むくみ/頭重/雨天悪化/軟便</label>
+                  <label><input type="checkbox" value="sui_def"> 乾燥・口渇/便秘ぎみ</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="hint" style="margin-top:8px">※ 下の「正式ラジオ」へ自動で反映します。必要なら手動調整してください。</div>
+          </div>
+
+          <!-- 体質（正式ラジオ。app.py が読む値） -->
+          <div class="card">
+            <h2>体質（八綱＋気血水）</h2>
+            <div class="row row-3">
+              <div>
+                <label>実/虚</label>
+                <div class="radio-line">
+                  <label><input type="radio" name="jitsu_kyo" value="jitsu"> 実</label>
+                  <label><input type="radio" name="jitsu_kyo" value="chukan" checked> 中間</label>
+                  <label><input type="radio" name="jitsu_kyo" value="kyo"> 虚</label>
+                </div>
+              </div>
+              <div>
+                <label>寒/熱</label>
+                <div class="radio-line">
+                  <label><input type="radio" name="kan_netsu" value="kan"> 寒</label>
+                  <label><input type="radio" name="kan_netsu" value="neutral" checked> 中庸</label>
+                  <label><input type="radio" name="kan_netsu" value="netsu"> 熱</label>
+                </div>
+              </div>
+              <div>
+                <label>表/裏</label>
+                <div class="radio-line">
+                  <label><input type="radio" name="hyo_ri" value="hyo"> 表</label>
+                  <label><input type="radio" name="hyo_ri" value="unknown" checked> 不明</label>
+                  <label><input type="radio" name="hyo_ri" value="ri"> 裏</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="row row-3" style="margin-top:10px">
+              <div>
+                <label>気</label>
+                <div class="radio-line">
+                  <label><input type="radio" name="qi" value="normal" checked> 正常</label>
+                  <label><input type="radio" name="qi" value="deficiency"> 気虚</label>
+                  <label><input type="radio" name="qi" value="stagnation"> 気滞</label>
+                  <label><input type="radio" name="qi" value="rebellion"> 気逆</label>
+                </div>
+              </div>
+              <div>
+                <label>血</label>
+                <div class="radio-line">
+                  <label><input type="radio" name="xue" value="normal" checked> 正常</label>
+                  <label><input type="radio" name="xue" value="deficiency"> 血虚</label>
+                  <label><input type="radio" name="xue" value="stasis"> 瘀血</label>
+                </div>
+              </div>
+              <div>
+                <label>水</label>
+                <div class="radio-line">
+                  <label><input type="radio" name="sui" value="normal" checked> 正常</label>
+                  <label><input type="radio" name="sui" value="retention"> 水滞/痰湿</label>
+                  <label><input type="radio" name="sui" value="deficiency"> 津液不足</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 視診（任意） -->
+          <div class="card">
+            <h2>視診（任意）</h2>
+            <div class="row row-3">
+              <div>
+                <label>脈の力</label>
+                <select name="pulse_strength">
+                  <option value="">--</option><option value="weak">弱い</option><option value="normal">普通</option><option value="strong">強い</option>
+                </select>
+              </div>
+              <div>
+                <label>脈の速さ</label>
+                <select name="pulse_rate">
+                  <option value="">--</option><option value="slow">遅い</option><option value="normal">普通</option><option value="rapid">速い</option>
+                </select>
+              </div>
+              <div>
+                <label>脈の性状</label>
+                <select name="pulse_quality">
+                  <option value="">--</option>
+                  <option value="slippery">滑脈（ぬめる）</option>
+                  <option value="wiry">弦脈（つっぱる）</option>
+                  <option value="choppy">澀脈（途切れ）</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row row-3" style="margin-top:10px">
+              <div>
+                <label>顔色</label>
+                <select name="face_color">
+                  <option value="">--</option><option value="pale">青白い</option><option value="normal">普通</option><option value="red">赤い</option><option value="dark">暗い/くすむ</option>
+                </select>
+              </div>
+              <div>
+                <label>舌の色</label>
+                <select name="tongue_color">
+                  <option value="">--</option><option value="pale">淡</option><option value="normal">正常</option><option value="red">紅</option><option value="purple">紫</option>
+                </select>
+              </div>
+              <div>
+                <label>舌の体</label>
+                <select name="tongue_body">
+                  <option value="">--</option><option value="scalloped">歯痕</option><option value="swollen">腫大</option><option value="thin">瘦薄</option><option value="normal">正常</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row row-3" style="margin-top:10px">
+              <div>
+                <label>舌苔</label>
+                <select name="tongue_coat">
+                  <option value="">--</option><option value="thin_white">薄白</option><option value="thick_white">厚白</option><option value="yellow">黄苔</option><option value="none">苔なし</option>
+                </select>
+              </div>
+              <div>
+                <label>舌の湿</label>
+                <select name="tongue_moisture">
+                  <option value="">--</option><option value="dry">乾</option><option value="normal">普通</option><option value="wet">湿</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- 写真アップロード -->
+          <div class="card">
+            <h2>写真（任意）</h2>
+            <div class="upload">
+              <div>
+                <label>舌の写真</label>
+                <input type="file" name="tongue_images" accept="image/*" multiple />
+                <div class="preview" id="prev-tongue"></div>
+              </div>
+              <div>
+                <label>顔の写真</label>
+                <input type="file" name="face_images" accept="image/*" multiple />
+                <div class="preview" id="prev-face"></div>
+              </div>
+              <div>
+                <label>体/むくみの写真</label>
+                <input type="file" name="body_images" accept="image/*" multiple />
+                <div class="preview" id="prev-body"></div>
+              </div>
+              <div>
+                <label>爪の写真</label>
+                <input type="file" name="nails_images" accept="image/*" multiple />
+                <div class="preview" id="prev-nails"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn primary" type="submit">送信して記録を作成</button>
+            <button class="btn ghost" type="reset">リセット</button>
+          </div>
+        </div>
+
+        <!-- 右：初心者ガイド -->
+        <div class="side">
+          <div class="card">
+            <h2 style="margin-bottom:8px">初心者ガイド</h2>
+            <details open>
+              <summary>虚・実の見分け方</summary>
+              <div class="helper">
+                <ul>
+                  <li>虚：だるい、声小、息切れ → <b>補う処方</b>を検討（補気/補血/温中）</li>
+                  <li>実：張る・詰まる、刺す痛み → <b>巡らせて余分をさばく</b></li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>寒・熱のコツ</summary>
+              <div class="helper">
+                <ul>
+                  <li>寒：冷えで悪化・温め良い・温中/温陽</li>
+                  <li>熱：ほてり/口渇/赤み → 清熱/養陰</li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>気血水の目安</summary>
+              <div class="helper">
+                <ul>
+                  <li>気虚：だるい/息切れ/食後眠い</li>
+                  <li>気滞：張る・ため息・ストレスで悪化</li>
+                  <li>血虚：乾燥・めまい・不眠（男性は月経関連除外）</li>
+                  <li>瘀血：刺す痛み・肩こり・暗紫舌</li>
+                  <li>痰湿/水滞：むくみ・頭重・雨天悪化・軟便</li>
+                  <li>津液不足：乾燥・口渇・便秘ぎみ</li>
+                </ul>
+              </div>
+            </details>
+            <details>
+              <summary>主訴を拾う質問例</summary>
+              <div class="helper">
+                <ul>
+                  <li>「どんなときに悪化/軽減しますか？」（雨/食後/冷飲/ストレス）</li>
+                  <li>「痛みは刺す？鈍い？張る感じ？」</li>
+                  <li>「喉の詰まりは飲むと変わる？ハミングで変わる？」</li>
+                </ul>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
     </form>
-    <div id="result"></div>
-</div>
-<script>
-document.getElementById("symptomForm").addEventListener("submit", function(e){
-    e.preventDefault();
-    let symptoms = [];
-    document.querySelectorAll("input[name='symptom']:checked").forEach(el => {
-        symptoms.push(el.value);
-    });
-    fetch("/suggest", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({symptoms: symptoms})
-    })
-    .then(res => res.json())
-    .then(data => {
-        let html = "<h2>AI提案結果</h2><ul>";
-        data.suggestions.forEach(s => {
-            html += `<li>${s}</li>`;
+  </div>
+
+  <script>
+    // 画像プレビュー
+    function bindPreview(inputName, previewId){
+      const input = document.querySelector(`input[name="${inputName}"]`);
+      const preview = document.getElementById(previewId);
+      if(!input || !preview) return;
+      input.addEventListener('change', ()=>{
+        preview.innerHTML = '';
+        [...input.files].forEach(f=>{
+          const url = URL.createObjectURL(f);
+          const img = document.createElement('img');
+          img.src = url; preview.appendChild(img);
         });
-        html += "</ul>";
-        document.getElementById("result").innerHTML = html;
+      });
+    }
+    bindPreview('tongue_images','prev-tongue');
+    bindPreview('face_images','prev-face');
+    bindPreview('body_images','prev-body');
+    bindPreview('nails_images','prev-nails');
+
+    // 初心者チェック → ラジオ自動反映
+    const rJitsu = [...document.querySelectorAll('input[name="jitsu_kyo"]')];
+    const rKan   = [...document.querySelectorAll('input[name="kan_netsu"]')];
+    const rQi    = [...document.querySelectorAll('input[name="qi"]')];
+    const rXue   = [...document.querySelectorAll('input[name="xue"]')];
+    const rSui   = [...document.querySelectorAll('input[name="sui"]')];
+
+    function setRadio(nameNodeList, value){
+      const node = nameNodeList.find(n => n.value===value);
+      if(node) node.checked = true;
+    }
+
+    document.getElementById('reflectBtn').addEventListener('click', ()=>{
+      // 寒熱
+      const coldCnt = document.querySelectorAll('#coldSigns input:checked').length;
+      const heatCnt = document.querySelectorAll('#heatSigns input:checked').length;
+      if(coldCnt>heatCnt && coldCnt>0) setRadio(rKan,'kan');
+      else if(heatCnt>coldCnt && heatCnt>0) setRadio(rKan,'netsu');
+      else setRadio(rKan,'neutral');
+
+      // 実虚
+      const defCnt = document.querySelectorAll('#defSigns input:checked').length;
+      const exCnt  = document.querySelectorAll('#exSigns  input:checked').length;
+      if(defCnt>exCnt && defCnt>0) setRadio(rJitsu,'kyo');
+      else if(exCnt>defCnt && exCnt>0) setRadio(rJitsu,'jitsu');
+      else setRadio(rJitsu,'chukan');
+
+      // 気血水
+      const qiDef = document.querySelector('#qiSigns  input[value="qi_def"]').checked;
+      const qiStg = document.querySelector('#qiSigns  input[value="qi_stag"]').checked;
+      const qiRev = document.querySelector('#qiSigns  input[value="qi_rev"]').checked;
+      if(qiDef) setRadio(rQi,'deficiency');
+      if(qiStg) setRadio(rQi,'stagnation');
+      if(qiRev) setRadio(rQi,'rebellion');
+      if(!qiDef && !qiStg && !qiRev) setRadio(rQi,'normal');
+
+      const xDef = document.querySelector('#xueSigns input[value="xue_def"]').checked;
+      const xSta = document.querySelector('#xueSigns input[value="xue_stasis"]').checked;
+      if(xDef) setRadio(rXue,'deficiency');
+      if(xSta) setRadio(rXue,'stasis');
+      if(!xDef && !xSta) setRadio(rXue,'normal');
+
+      const sRet = document.querySelector('#suiSigns input[value="sui_ret"]').checked;
+      const sDef = document.querySelector('#suiSigns input[value="sui_def"]').checked;
+      if(sRet) setRadio(rSui,'retention');
+      if(sDef) setRadio(rSui,'deficiency');
+      if(!sRet && !sDef) setRadio(rSui,'normal');
     });
-});
-</script>
+  </script>
 </body>
 </html>
