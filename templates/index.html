@@ -11,8 +11,7 @@
 <label for="{{ qu.id }}">{{ qu.text }}</label>
 {% if qu.type == 'text' %}<input type="text" id="{{ qu.id }}" name="{{ qu.id }}">
 {% elif qu.type == 'number' %}<input type="number" id="{{ qu.id }}" name="{{ qu.id }}">
-{% elif qu.type == 'choice' %}<select id="{{ qu.id }}" name="{{ qu.id }}">
-<option value="" selected disabled>選択してください</option>{% for op in qu.options %}<option value="{{ op }}">{{ op }}</option>{% endfor %}</select>
+{% elif qu.type == 'choice' %}<select id="{{ qu.id }}" name="{{ qu.id }}"><option value="" selected disabled>選択してください</option>{% for op in qu.options %}<option value="{{ op }}">{{ op }}</option>{% endfor %}</select>
 {% elif qu.type == 'boolean' %}<label class="switch"><input type="checkbox" id="{{ qu.id }}" name="{{ qu.id }}"><span class="slider"></span></label>{% endif %}
 </div>{% endfor %}
 </div></div>{% endfor %}

@@ -5,6 +5,16 @@ from pathlib import Path
 from typing import Any, Dict, List
 from flask import Flask, render_template, request, redirect, url_for, abort
 
+from openai import OpenAI
+import httpx
+
+def create_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY")
+    proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
+    if proxy:
+        return OpenAI(api_key=api_key, http_client=httpx.Client(proxies=proxy, follow_redirects=True))
+    return OpenAI(api_key=api_key)
+
 APP_DIR = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.getenv("DATA_ROOT", "/tmp/kanpo_ai"))
 UPLOAD_DIR = DATA_ROOT / "uploads"
@@ -71,14 +81,6 @@ def stage2_llm_selection(form: Dict[str, Any], pool: list, sex: str) -> Dict[str
         return ass
 
     from openai import OpenAI
-import httpx
-
-def create_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
-    if proxy:
-        return OpenAI(api_key=api_key, http_client=httpx.Client(, follow_redirects=True))
-    return OpenAI(api_key=api_key)
     client = create_openai_client()
     sys_prompt = (
         "あなたは漢方薬局のベテラン薬剤師です。"
@@ -317,14 +319,6 @@ def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
         return simple_assess(form)
     try:
         from openai import OpenAI
-import httpx
-
-def create_openai_client():
-    api_key = os.getenv("OPENAI_API_KEY")
-    proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
-    if proxy:
-        return OpenAI(api_key=api_key, http_client=httpx.Client(, follow_redirects=True))
-    return OpenAI(api_key=api_key)
         client = create_openai_client()
         sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
