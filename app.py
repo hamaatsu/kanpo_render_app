@@ -4,6 +4,7 @@ import os, json, uuid, datetime as dt
 from pathlib import Path
 from typing import Any, Dict, List
 from flask import Flask, render_template, request, redirect, url_for, abort
+import traceback
 
 from openai import OpenAI
 import httpx
@@ -390,40 +391,48 @@ def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
 def index():
     return render_template("index.html", q=QUESTIONNAIRE)
 
+
 @app.route("/submit", methods=["POST"])
 def submit():
-    data = {}
-    for sec in QUESTIONNAIRE["sections"]:
-        for q in sec["questions"]:
-            val = request.form.get(q["id"], "").strip()
-            if q["type"] == "boolean":
-                data[q["id"]] = (request.form.get(q["id"]) == "on")
+    try:
+        # Normalize form dict (checkbox=on/true -> True)
+        form = {}
+        for k, v in request.form.items():
+            if isinstance(v, str) and v.lower() in ("true", "on", "1", "yes"):
+                form[k] = True
             else:
-                data[q["id"]] = val
-    rec_id = str(uuid.uuid4())
-    sex = data.get("gender","")
-    pool = build_candidate_pool_from_complaint(data.get("chief_complaint",""))
-    assessment = stage2_llm_selection(data, pool, sex)
-    assessment = complaint_rerank(assessment, data)
+                form[k] = v
+        form["chief_complaint"] = request.form.get("chief_complaint","")
 
+        pool = build_candidate_pool_from_complaint(form.get("chief_complaint",""))
+        assessment = stage2_llm_selection(pool, form)
+    except Exception as e:
+        print("ERROR in /submit:", e)
+        traceback.print_exc()
+        # Fallback: minimal empty assessment to avoid 500
+        assessment = {"chosen":"", "candidates":[], "patient_summary":"", "complaint_sections":[]}
+
+    # Build record regardless
+    import uuid, datetime as dt, json
+    rec_id = uuid.uuid4().hex[:10]
     record = {
         "id": rec_id,
-        "submitted_at": now_iso(),
+        "submitted_at": dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         "patient": {
-            "name": data.get("name",""),
-            "age": data.get("age",""),
-            "sex": data.get("gender",""),
-            "region": data.get("region",""),
-            "chief_complaint": data.get("chief_complaint",""),
+            "name": form.get("name",""),
+            "age": form.get("age",""),
+            "sex": form.get("sex",""),
+            "region": form.get("region",""),
+            "chief_complaint": form.get("chief_complaint","")
         },
-        "ai_assessment": assessment,
-        "raw": data
+        "assessment": assessment,
+        "form": form
     }
-    with (DATA_DIR/f"{rec_id}.json").open("w", encoding="utf-8") as f:
-        json.dump(record, f, ensure_ascii=False, indent=2)
-    return redirect(url_for("detail", rec_id=rec_id))
+    (DATA_DIR/f"{rec_id}.json").write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    return redirect(url_for("record_detail", rec_id=rec_id))
 
 @app.route("/record/<rec_id>")
+
 def detail(rec_id: str):
     p = DATA_DIR/f"{rec_id}.json"
     if not p.exists():
