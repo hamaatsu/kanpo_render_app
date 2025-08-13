@@ -79,7 +79,7 @@ def create_openai_client():
     if proxy:
         return OpenAI(api_key=api_key, http_client=httpx.Client(, follow_redirects=True))
     return OpenAI(api_key=api_key)
-    client = create_openai_client())
+    client = create_openai_client()
     sys_prompt = (
         "あなたは漢方薬局のベテラン薬剤師です。"
         "【二段階選定】ステージ1で主訴から抽出された候補群（allowed_candidates）から、"
@@ -325,7 +325,7 @@ def create_openai_client():
     if proxy:
         return OpenAI(api_key=api_key, http_client=httpx.Client(, follow_redirects=True))
     return OpenAI(api_key=api_key)
-        client = create_openai_client())
+        client = create_openai_client()
         sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
             "【最重要】主訴（chief_complaint）を最優先に評価し、必ず候補Top3のうち最低1つは主訴に直接対応する処方を含めてください。"
