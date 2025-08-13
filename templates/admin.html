@@ -4,6 +4,12 @@
 <body><header class="app-header"><div class="container"><h1>AI漢方相談</h1><nav><a href="/">新規登録</a></nav></div></header>
 <main class="container"><h2>記録一覧</h2><section class="card"><table class="table">
 <tr><th>受理</th><th>氏名</th><th>主訴</th><th>推奨方剤</th><th></th></tr>
-{% for r in recs %}<tr><td class="mono">{{ r.submitted_at }}</td><td>{{ r.patient.name }}</td><td>{{ r.patient.chief_complaint }}</td><td>{{ r.ai_assessment.chosen }}</td><td><a href="/record/{{ r.id }}" class="btn small">開く</a></td></tr>{% endfor %}
+{% for r in recs %}<tr>
+  <td class="mono">{{ r.submitted_at }}</td>
+  <td>{{ r.patient.name }}</td>
+  <td>{{ r.patient.chief_complaint }}</td>
+  <td>{{ r.assessment.chosen }}</td>
+  <td><a href="/record/{{ r.id }}" class="btn small">開く</a></td>
+</tr>{% endfor %}
 </table></section></main>
 <footer class="app-footer"><div class="container small muted">© AI漢方相談</div></footer></body></html>

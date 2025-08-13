@@ -1,14 +1,29 @@
+
 # -*- coding: utf-8 -*-
 from __future__ import annotations
-import os, json, uuid, datetime as dt
+import os, json, uuid, datetime as dt, traceback
 from pathlib import Path
 from typing import Any, Dict, List
 from flask import Flask, render_template, request, redirect, url_for, abort
-import traceback
 
+APP_DIR = Path(__file__).resolve().parent
+DATA_ROOT = Path(os.getenv("DATA_ROOT", "/tmp/kanpo_ai"))
+DATA_DIR = DATA_ROOT / "data"
+for d in (DATA_ROOT, DATA_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+# ===== Flask =====
+app = Flask(__name__, static_folder="static", static_url_path="/static")
+
+# ===== Data files =====
+with (APP_DIR / "ai_kampo_questionnaire.json").open("r", encoding="utf-8") as f:
+    QUESTIONNAIRE = json.load(f)
+with (APP_DIR / "complaint_map.json").open("r", encoding="utf-8") as f:
+    COMPLAINT_MAP = json.load(f)
+
+# ===== OpenAI client (v1) =====
 from openai import OpenAI
 import httpx
-
 def create_openai_client():
     api_key = os.getenv("OPENAI_API_KEY")
     proxy = os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
@@ -16,389 +31,114 @@ def create_openai_client():
         return OpenAI(api_key=api_key, http_client=httpx.Client(proxies=proxy, follow_redirects=True))
     return OpenAI(api_key=api_key)
 
-APP_DIR = Path(__file__).resolve().parent
-DATA_ROOT = Path(os.getenv("DATA_ROOT", "/tmp/kanpo_ai"))
-UPLOAD_DIR = DATA_ROOT / "uploads"
-DATA_DIR = DATA_ROOT / "data"
-for d in (DATA_ROOT, UPLOAD_DIR, DATA_DIR):
-    d.mkdir(parents=True, exist_ok=True)
-
-# Load questionnaire and complaint map
-with (APP_DIR / "ai_kampo_questionnaire.json").open("r", encoding="utf-8") as f:
-    QUESTIONNAIRE = json.load(f)
-COMPLAINT_MAP = json.loads((APP_DIR/"complaint_map.json").read_text(encoding="utf-8"))
-
-app = Flask(__name__)
-
-
-# --- Constitution extraction (very simple heuristic for weighting) ---
-def infer_constitution(form: Dict[str, Any]) -> Dict[str, bool]:
-    """Infer constitution flags from questionnaire for weighting stage."""
-    flags = {
-        "qi_def": bool(form.get("ki_deficiency")),
-        "qi_stag": bool(form.get("ki_stagnation")),
-        "xue_def": bool(form.get("blood_def")),
-        "yu_xue": bool(form.get("yu_xue")),
-        "sui_ret": bool(form.get("sui_ret")),
-        "heat": str(form.get("cold_heat","")).startswith("暑") or "ほて" in str(form.get("cold_heat","")),
-        "cold": str(form.get("cold_heat","")).startswith("冷"),
-        "weak": str(form.get("kyo_jitsu","")).startswith("虚"),
-        "strong": str(form.get("kyo_jitsu","")).startswith("実")
-    }
-    return flags
-
-def build_candidate_pool_from_complaint(text: str) -> list:
-    """Stage-1: from chief complaint, build a candidate pool of formulas (unique, up to ~8)."""
-    t = text or ""
-    pool = []
-    seen = set()
+# ===== Helpers =====
+def build_complaint_profile(text: str) -> Dict[str, Any]:
+    t = (text or "").strip()
     for dom, spec in COMPLAINT_MAP.items():
-        if any(kw in t for kw in spec.get("keywords", [])):
-            for f in spec.get("prefer", []):
-                if f not in seen:
-                    pool.append({"name": f, "source_domain": dom})
-                    seen.add(f)
-    # If nothing matched, provide a broad default pool
-    if not pool:
-        defaults = ["補中益気湯","六君子湯","桂枝茯苓丸","葛根湯","荊芥連翹湯","清上防風湯","平胃散","半夏瀉心湯"]
-        for f in defaults:
-            if f not in seen:
-                pool.append({"name": f, "source_domain": "general"})
-                seen.add(f)
-    return pool[:8]
+        kws = spec.get("keywords", [])
+        if any(kw in t for kw in kws):
+            return {"domain": dom, "prefer": spec.get("prefer", [])}
+    return {"domain": "general", "prefer": []}
 
-def stage2_llm_selection(form: Dict[str, Any], pool: list, sex: str) -> Dict[str, Any]:
-    """Stage-2: Ask LLM to select Top3 from given pool, weighting by constitution and full context."""
+def build_candidate_pool_from_complaint(text: str) -> List[str]:
+    return build_complaint_profile(text).get("prefer", [])[:5]
+
+def infer_constitution(form: Dict[str, Any]) -> Dict[str, bool]:
+    # 最低限のフラグ（八綱・気血水）
+    cold_heat = str(form.get("cold_heat",""))
+    kyo_jitsu = str(form.get("kyo_jitsu",""))
+    return {
+        "cold": cold_heat.startswith("冷"),
+        "heat": cold_heat.startswith("暑") or "ほて" in cold_heat,
+        "weak": kyo_jitsu.startswith("虚"),
+        "strong": kyo_jitsu.startswith("実"),
+    }
+
+def stage2_llm_selection(pool: List[str], form: Dict[str, Any]) -> Dict[str, Any]:
+    """LLM使用（APIキーがある場合）/ ルールベース（フォールバック）"""
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        # fallback: simple rank by rough constitution tags
-        ass = simple_assess(form)
-        # restrict to pool names if possible
-        names = [p["name"] for p in pool]
-        cands = [c for c in ass.get("candidates", []) if c.get("name") in names]
-        if cands:
-            ass["candidates"] = cands[:3]
-            ass["chosen"] = cands[0]["name"]
-        return ass
+    if api_key:
+        try:
+            client = create_openai_client()
+            sys_prompt = (
+                "あなたは漢方薬局のベテラン薬剤師です。"
+                "ステージ1の候補（allowed_candidates）から、体質（八綱/気血水/舌/脈/生活）と主訴を加味してTop3を選定。"
+                "各候補には短い理由（主訴との関係）を付けてください。JSONで返します。"
+            )
+            payload = {
+                "form": form,
+                "allowed_candidates": pool,
+                "complaint_profile": build_complaint_profile(form.get('chief_complaint','')),
+                "constitution_flags": infer_constitution(form)
+            }
+            model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+            resp = client.chat.completions.create(
+                model=model, temperature=0.2,
+                messages=[{"role":"system","content":sys_prompt},
+                          {"role":"user","content":json.dumps(payload, ensure_ascii=False)}]
+            )
+            content = resp.choices[0].message.content
+            parsed = json.loads(content)
+            cands = []
+            for it in (parsed.get("candidates") or []):
+                cands.append({
+                    "name": it.get("name",""),
+                    "score": float(it.get("score", 1.0)),
+                    "ai_reason": it.get("ai_reason") or "",
+                    "script": it.get("script") or {"explain": ""},
+                })
+            chosen = parsed.get("chosen") or (cands[0]["name"] if cands else (pool[0] if pool else ""))
+            return {
+                "chosen": chosen,
+                "candidates": cands,
+                "patient_summary": parsed.get("patient_summary",""),
+                "complaint_sections": parsed.get("complaint_sections", []),
+                "foods_good": parsed.get("foods_good", []),
+                "foods_avoid": parsed.get("foods_avoid", []),
+                "topics": parsed.get("topics", []),
+                "chief_note": parsed.get("chief_note",""),
+            }
+        except Exception as e:
+            print("LLM stage failed:", e)
+            traceback.print_exc()
 
-    from openai import OpenAI
-    client = create_openai_client()
-    sys_prompt = (
-        "あなたは漢方薬局のベテラン薬剤師です。"
-        "【二段階選定】ステージ1で主訴から抽出された候補群（allowed_candidates）から、"
-        "ステージ2として体質／随伴所見（八綱・気血水・舌・脈・生活）を加味してTop3を選定してください。"
-        "候補は原則として allowed_candidates から選びます（どうしても不適なら最大1つまで補う）。"
-        "Top3のうち最低1つ（できれば2つ）は主訴に直接対応する処方にしてください。"
-        "各候補には『主訴との関係』を1行で明記し、患者向け説明の1文目で主訴に必ず触れてください。"
-        "出力は必ずJSON（candidates[], chosen, axes, qxs, patient_summary, complaint_sections, diet, lifestyle 等）。"
-        "男性には妊娠関連の注意は出さないでください。"
-    )
-    payload = {
-        "form": form,
-        "allowed_candidates": pool,
-        "complaint_profile": build_complaint_profile(form.get("chief_complaint","")),
-        "constitution_flags": infer_constitution(form)
-    }
-    model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
-    resp = client.chat.completions.create(
-        model=model, temperature=0.2,
-        messages=[{"role":"system","content":sys_prompt},
-                  {"role":"user","content":json.dumps(payload, ensure_ascii=False)}]
-    )
-    content = resp.choices[0].message.content
-    try:
-        parsed = json.loads(content)
-    except Exception:
-        parsed = {"llm_text": content}
-    # normalize
-    cands = []
-    for it in (parsed.get("candidates") or []):
-        cands.append({
-            "name": it.get("name",""),
-            "score": it.get("score", 1.0),
-            "pharmacist_tip": it.get("pharmacist_tip",""),
-            "script": {"explain": it.get("patient_explain",""), "watch": it.get("watch","")},
-            "lifestyle": it.get("lifestyle", []),
-            "foods_good": it.get("foods_good", []),
-            "foods_avoid": it.get("foods_avoid", []),
-            "counsel_points": it.get("counsel_points", []),
-            "ai_reason": it.get("reason","")
-        })
-    assessment = {
-        "chosen": (cands[0]["name"] if cands else ""),
-        "candidates": cands,
-        "axes": parsed.get("axes", {}),
-        "qxs": parsed.get("qxs", {}),
-        "patient_summary": parsed.get("patient_summary",""),
-        "chief_note": parsed.get("chief_note",""),
-        "diet": parsed.get("diet", []),
-        "lifestyle": parsed.get("lifestyle", []),
-        "topics": parsed.get("topics", []),
-        "complaint_sections": parsed.get("complaint_sections", []),
-        "llm_raw": parsed
-    }
-    # remove pregnancy warnings for non-female
-    if (sex or "").lower() not in ["female","woman","女性","女"]:
-        def _strip_preg(text: str) -> str:
-            import re as _re
-            return _re.sub(r"妊娠中[^。]*。?", "", text or "")
-        assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary",""))
-        for c in assessment["candidates"]:
-            if isinstance(c.get("script"), dict):
-                c["script"]["watch"] = _strip_preg(c["script"].get("watch",""))
-    return assessment
-
-
-def now_iso() -> str:
-    return dt.datetime.utcnow().isoformat() + "Z"
+    # ---- ルールベース ----
+    flags = infer_constitution(form)
+    base = ["補中益気湯","六君子湯","当帰芍薬散","五苓散","真武湯","人参湯",
+            "清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"]
+    scores = {n:0.0 for n in base}
+    if flags["cold"]:
+        for n in ["人参湯","真武湯","補中益気湯"]: scores[n]+=2.0
+    if flags["heat"]:
+        for n in ["清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"]: scores[n]+=2.0
+    if flags["weak"]:
+        for n in ["補中益気湯","六君子湯","当帰芍薬散"]: scores[n]+=1.2
+    for n in pool: scores[n] = scores.get(n,0)+3.0
+    top = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
+    cands = [{"name": n, "score": s, "ai_reason":"体質と主訴からの推定", "script":{"explain":""}} for n,s in top]
+    return {"chosen": (top[0][0] if top else ""), "candidates": cands}
 
 def read_all_records() -> List[Dict[str, Any]]:
     recs = []
-    for p in DATA_DIR.glob("*.json"):
+    for p in sorted(DATA_DIR.glob("*.json")):
         try:
-            with p.open("r", encoding="utf-8") as f:
-                recs.append(json.load(f))
+            recs.append(json.loads(p.read_text(encoding="utf-8")))
         except Exception:
             continue
-    recs.sort(key=lambda x: x.get("submitted_at",""), reverse=True)
+    recs.sort(key=lambda r: r.get("submitted_at",""), reverse=True)
     return recs
 
-def build_complaint_profile(text: str) -> dict:
-    """Map chief complaint text to domain via COMPLAINT_MAP."""
-    t = text or ""
-    prof = {"domain":"general","tags":[]}
-    for dom, spec in COMPLAINT_MAP.items():
-        if any(kw in t for kw in spec.get("keywords", [])):
-            prof["domain"] = dom
-            break
-    return prof
-
-def complaint_rerank(assessment: dict, form: dict) -> dict:
-    """Ensure at least one domain-prefer formula is in Top3 and boost them strongly."""
-    try:
-        prof = build_complaint_profile(form.get("chief_complaint",""))
-        dom = prof.get("domain","general")
-        mapping = COMPLAINT_MAP.get(dom, {})
-        prefer = mapping.get("prefer", [])
-        if not assessment:
-            return assessment
-        cands = assessment.get("candidates") or []
-        boosted = []
-        seen = set()
-        for c in cands:
-            s = float(c.get("score", 0))
-            if c.get("name") in prefer:
-                s += 6.0
-                c["ai_reason"] = (c.get("ai_reason") or "") + "（主訴に直接対応）"
-            boosted.append((s, c))
-            seen.add(c.get("name"))
-        if prefer and all(name not in seen for name in prefer):
-            ins = {
-                "name": prefer[0],
-                "score": 6.0,
-                "pharmacist_tip": "主訴に直接対応する処方。",
-                "script": {"explain": ""},
-                "lifestyle": [],
-                "foods_good": [],
-                "foods_avoid": [],
-                "counsel_points": [],
-                "ai_reason": "主訴に基づく優先候補"
-            }
-            boosted.append((6.0, ins))
-        boosted.sort(key=lambda x: x[0], reverse=True)
-        cands2 = [c for _, c in boosted][:3]
-        assessment["candidates"] = cands2
-        if cands2:
-            assessment["chosen"] = cands2[0]["name"]
-        # dermatology defaults
-        if dom == "dermatology":
-            diet = list({*assessment.get("diet", []), *mapping.get("diet", [])})
-            avoid = mapping.get("avoid", [])
-            ls = list({*assessment.get("lifestyle", []), "辛味・油の摂り過ぎを控える", "十分な睡眠", "肌への強い刺激を避ける"})
-            assessment["diet"] = diet + (["（控える）"] + avoid if avoid else [])
-            assessment["lifestyle"] = ls
-            assessment["chief_note"] = "主訴（皮膚症状）を最優先に再ランクしました。"
-        return assessment
-    except Exception:
-        return assessment
-
-# Fallback assessment when no OpenAI or error
-def simple_assess(form: Dict[str, Any]) -> Dict[str, Any]:
-    chief = (form.get("chief_complaint") or "").lower()
-    kyo = "虚" if ("疲" in chief or str(form.get("kyo_jitsu","")).startswith("虚")) else "中間"
-    heat = "寒" if str(form.get("cold_heat","")).startswith("冷") else ("熱" if "ほて" in str(form.get("cold_heat","")) else "中間")
-    qi = "気滞" if ("張" in chief or form.get("ki_stagnation")) else ("気虚" if form.get("ki_deficiency") else "正常")
-    xue = "瘀血" if form.get("yu_xue") else ("血虚" if form.get("blood_def") else "正常")
-    sui = "水滞" if form.get("sui_ret") else "正常"
-
-    formulas = {"葛根湯":0,"疎経活血湯":0,"川芎茶調散":0,"釣藤散":0,"桂枝茯苓丸":0,
-                "補中益気湯":0,"六君子湯":0,"当帰芍薬散":0,"五苓散":0,"真武湯":0,"人参湯":0,"竹葉石膏湯":0,
-                "清上防風湯":0,"荊芥連翹湯":0,"十味敗毒湯":0,"消風散":0,"黄連解毒湯":0,"温清飲":0}
-    if "肩" in chief:
-        for k in ["葛根湯","疎経活血湯","川芎茶調散","釣藤散","桂枝茯苓丸"]:
-            formulas[k] += 3
-    # skin keywords
-    if any(kw in chief for kw in ["ぶつぶつ","ブツブツ","にきび","ﾆｷﾋﾞ","ニキビ","発疹","湿疹","肌荒れ","赤み"]):
-        for k in ["清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"]:
-            formulas[k] += 6
-    if qi=="気虚": formulas["補中益気湯"] += 2
-    if xue=="瘀血": formulas["桂枝茯苓丸"] += 2
-    if sui=="水滞": formulas["五苓散"] += 2
-    if heat=="熱": formulas["竹葉石膏湯"] += 2
-
-    ranked = sorted(formulas.items(), key=lambda x: x[1], reverse=True)
-    top3 = [k for k,_ in ranked[:3]]
-    scripts = {
-        "葛根湯":"首肩のこわばりなど、急性の筋肉の張りに。体を温めて巡りを助けます。",
-        "疎経活血湯":"慢性的なこわばりや冷えで悪化する痛みに。血行促進をねらいます。",
-        "川芎茶調散":"肩こりを伴う頭痛・気象病に。気血の巡りを助けます。",
-        "釣藤散":"肩こり＋頭痛・めまい・イライラに。中高年の上衝に。",
-        "桂枝茯苓丸":"刺すような痛み・しこり・瘀斑。瘀血傾向のときに。",
-        "補中益気湯":"疲れやすい・食欲低下などの気虚に。",
-        "六君子湯":"胃もたれ・軟便の気虚＋痰湿に。",
-        "当帰芍薬散":"冷え・むくみ・立ちくらみ傾向に。",
-        "五苓散":"口渇・尿少・むくみ・頭重に。",
-        "真武湯":"冷え＋めまい・むくみの水滞に。",
-        "人参湯":"冷えによる腹痛/下痢などの虚寒に。",
-        "竹葉石膏湯":"ほてり・口渇・だるさ同時のときに。",
-        "清上防風湯":"顔のブツブツ・赤み・炎症に。余分な熱をさまし皮膚の炎症を鎮めます。",
-        "荊芥連翹湯":"ニキビ・吹き出物などの化膿傾向に。",
-        "十味敗毒湯":"化膿性の皮膚症状・湿疹・蕁麻疹に。",
-        "消風散":"かゆみの強い湿疹、湿熱＆風熱に。",
-        "黄連解毒湯":"強い熱感・赤み・炎症に。",
-        "温清飲":"血熱＋瘀血傾向の皮膚症状に。"
-    }
-    cands = []
-    for i, name in enumerate(top3):
-        cands.append({
-            "name": name,
-            "score": ranked[i][1],
-            "pharmacist_tip": scripts.get(name,""),
-            "script": {"explain": scripts.get(name,""), "watch": ""},
-            "lifestyle": ["辛味・油の摂り過ぎを控える" if name in ["清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"] else "温かい飲み物",
-                           "十分な睡眠"],
-            "foods_good": ["はとむぎ","緑豆","ドクダミ茶"] if name in ["清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"] else ["ねぎ","しょうが","玉ねぎ"],
-            "foods_avoid": ["揚げ物","辛味の強い料理","甘味過多"] if name in ["清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"] else ["冷たい飲料","甘味過多"],
-            "counsel_points": ["睡眠・食事・月経と皮膚の関係"] if name in ["清上防風湯","荊芥連翹湯","十味敗毒湯","消風散","黄連解毒湯","温清飲"] else ["痛みの質・時間帯","冷え/天候での増悪"]
-        })
-    assessment = {
-        "chosen": cands[0]["name"] if cands else "",
-        "candidates": cands,
-        "axes": {"jitsu_kyo": kyo, "kan_netsu": heat, "hyo_ri": str(form.get('hyou_ri',''))},
-        "qxs": {"qi": qi, "xue": xue, "sui": sui},
-        "patient_summary": f"体のバランスとしては『{kyo}・{heat}』傾向で、気血水では『{qi}/{xue}/{sui}』が示唆されます。主訴を重視して提案しています。",
-        "chief_note": "主訴を優先してスコア補正しています。",
-        "diet": ["はとむぎ","緑豆","ドクダミ茶"] if any(kw in chief for kw in ["ぶつぶつ","ブツブツ","にきび","ﾆｷﾋﾞ","ニキビ","発疹","湿疹","肌荒れ","赤み"]) else ["生姜スープ","陳皮茶","玉ねぎ"],
-        "lifestyle": ["十分な睡眠","肌への強い刺激を避ける"] if any(kw in chief for kw in ["ぶつぶつ","ブツブツ","にきび","ﾆｷﾋﾞ","ニキビ","発疹","湿疹","肌荒れ","赤み"]) else ["45分に1回立つ","首肩の温罨法","深い呼吸"],
-        "topics": ["皮膚と食事・睡眠の関係"] if any(kw in chief for kw in ["ぶつぶつ","ブツブツ","にきび","ﾆｷﾋﾞ","ニキビ","発疹","湿疹","肌荒れ","赤み"]) else ["気のめぐりと肩こり","睡眠と回復力"],
-        "complaint_sections": [{
-            "title":"主訴に直結するアドバイス",
-            "background":"皮膚の炎症と皮脂バランス・睡眠不足・食事（油/糖）が関連。",
-            "do":["十分な睡眠","洗顔はこすらずぬるま湯","汗をかいたら早めに洗う"],
-            "foods_good":["はとむぎ","緑豆","ドクダミ茶","セロリ","大根"],
-            "foods_avoid":["揚げ物","辛味","甘味過多","アルコール"],
-            "points":["メイク/整髪料の刺激チェック","月経周期との関連確認"],
-            "acupoints":["合谷","曲池","太衝"],
-            "danger":["高熱を伴う広範囲発疹","蜂窩織炎を疑う痛み/腫れ"]
-        }] if any(kw in chief for kw in ["ぶつぶつ","ブツブツ","にきび","ﾆｷﾋﾞ","ニキビ","発疹","湿疹","肌荒れ","赤み"]) else [{
-            "title":"主訴に直結するアドバイス",
-            "background":"巡りの低下や冷えが背景にあります。",
-            "do":["肩甲骨はがし","温湿布","深呼吸"],
-            "foods_good":["陳皮","生姜","ねぎ"],
-            "foods_avoid":["冷たい飲料","脂っこいもの"],
-            "points":["長時間の同一姿勢を避ける","湯船で温める"],
-            "acupoints":["肩井","風池","合谷"],
-            "danger":["片側の脱力/しびれが出たら受診"]
-        }]
-    }
-    assessment = complaint_rerank(assessment, form)
-    return assessment
-
-def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return simple_assess(form)
-    try:
-        from openai import OpenAI
-        client = create_openai_client()
-        sys_prompt = (
-            "あなたは漢方薬局のベテラン薬剤師です。"
-            "【最重要】主訴（chief_complaint）を最優先に評価し、必ず候補Top3のうち最低1つは主訴に直接対応する処方を含めてください。"
-            "問診（八綱：寒熱・虚実・表裏、気血水、舌・脈・顔色、主訴、生活）を総合し、証を決定してください。"
-            "出力は JSON。各候補には『主訴との関係』を明記。患者向け説明は3〜6文、平易な日本語で。薬膳（推奨/控え）、生活、面談深掘り、赤旗（受診目安）も含める。"
-            "男性には妊娠関連の注意は出さないでください。"
-            "皮膚症状の場合（complaint_profile.domain=dermatology）は、清上防風湯/荊芥連翹湯/十味敗毒湯/消風散/黄連解毒湯/温清飲などから最低1つを候補に含めること。"
-        )
-        user_payload = {
-            "form": form,
-            "complaint_profile": build_complaint_profile(form.get("chief_complaint",""))
-        }
-        model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
-        resp = client.chat.completions.create(
-            model=model, temperature=0.3,
-            messages=[{"role":"system","content":sys_prompt},
-                      {"role":"user","content":json.dumps(user_payload, ensure_ascii=False)}]
-        )
-        content = resp.choices[0].message.content
-        try:
-            parsed = json.loads(content)
-        except Exception:
-            parsed = {"llm_text": content}
-        cands = []
-        for it in (parsed.get("candidates") or []):
-            name = it.get("name","")
-            cands.append({
-                "name": name,
-                "score": it.get("score", 1.0),
-                "pharmacist_tip": it.get("pharmacist_tip",""),
-                "script": {"explain": it.get("patient_explain",""), "watch": it.get("watch","")},
-                "lifestyle": it.get("lifestyle", []),
-                "foods_good": it.get("foods_good", []),
-                "foods_avoid": it.get("foods_avoid", []),
-                "counsel_points": it.get("counsel_points", []),
-                "ai_reason": it.get("reason","")
-            })
-        assessment = {
-            "chosen": (cands[0]["name"] if cands else ""),
-            "candidates": cands,
-            "axes": parsed.get("axes", {}),
-            "qxs": parsed.get("qxs", {}),
-            "patient_summary": parsed.get("patient_summary",""),
-            "chief_note": parsed.get("chief_note",""),
-            "diet": parsed.get("diet", []),
-            "lifestyle": parsed.get("lifestyle", []),
-            "topics": parsed.get("topics", []),
-            "complaint_sections": parsed.get("complaint_sections", []),
-            "llm_raw": parsed
-        }
-        # remove pregnancy warnings for non-female
-        if (sex or "").lower() not in ["female","woman","女性","女"]:
-            def _strip_preg(text: str) -> str:
-                import re as _re
-                return _re.sub(r"妊娠中[^。]*。?", "", text or "")
-            assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary",""))
-            for c in assessment["candidates"]:
-                if isinstance(c.get("script"), dict):
-                    c["script"]["watch"] = _strip_preg(c["script"].get("watch",""))
-        assessment = complaint_rerank(assessment, form)
-        return assessment
-    except Exception as e:
-        ass = simple_assess(form)
-        ass["llm_error"] = f"{type(e).__name__}: {e}"
-        return ass
-
+# ===== Routes =====
 @app.route("/")
 def index():
     return render_template("index.html", q=QUESTIONNAIRE)
 
-
 @app.route("/submit", methods=["POST"])
 def submit():
     try:
-        # Normalize form dict (checkbox=on/true -> True)
         form = {}
         for k, v in request.form.items():
-            if isinstance(v, str) and v.lower() in ("true", "on", "1", "yes"):
+            if isinstance(v, str) and v.lower() in ("true","on","1","yes"):
                 form[k] = True
             else:
                 form[k] = v
@@ -409,11 +149,8 @@ def submit():
     except Exception as e:
         print("ERROR in /submit:", e)
         traceback.print_exc()
-        # Fallback: minimal empty assessment to avoid 500
         assessment = {"chosen":"", "candidates":[], "patient_summary":"", "complaint_sections":[]}
 
-    # Build record regardless
-    import uuid, datetime as dt, json
     rec_id = uuid.uuid4().hex[:10]
     record = {
         "id": rec_id,
@@ -432,19 +169,15 @@ def submit():
     return redirect(url_for("record_detail", rec_id=rec_id))
 
 @app.route("/record/<rec_id>")
-
-def detail(rec_id: str):
+def record_detail(rec_id):
     p = DATA_DIR/f"{rec_id}.json"
     if not p.exists():
         abort(404)
-    with p.open("r", encoding="utf-8") as f:
-        record = json.load(f)
-    return render_template("detail.html", data=record)
+    return render_template("detail.html", data=json.loads(p.read_text(encoding="utf-8")))
 
 @app.route("/admin")
 def admin():
-    recs = read_all_records()
-    return render_template("admin.html", recs=recs)
+    return render_template("admin.html", recs=read_all_records())
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT","5000")), debug=False)

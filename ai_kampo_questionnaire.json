@@ -1,10 +1,8 @@
 {
-  "version": "1.0",
-  "title": "AI漢方相談 問診票",
-  "description": "八綱分類＋気血水＋舌診＋脈診＋顔色＋生活を基にAIが証を推定して漢方薬候補を提示します。",
+  "title": "AI漢方相談（問診）",
+  "description": "八綱分類＋気血水＋舌診＋脈診＋睡眠と生活を基にAI推定を行います。",
   "sections": [
     {
-      "id": "basic_info",
       "title": "基本情報",
       "questions": [
         {
@@ -18,13 +16,13 @@
           "type": "number"
         },
         {
-          "id": "gender",
+          "id": "sex",
           "text": "性別",
           "type": "choice",
           "options": [
             "男性",
             "女性",
-            "その他"
+            "その他/無回答"
           ]
         },
         {
@@ -44,13 +42,12 @@
           "options": [
             "急性",
             "慢性",
-            "不明"
+            "ぶり返す/波がある"
           ]
         }
       ]
     },
     {
-      "id": "hakkou",
       "title": "八綱分類",
       "questions": [
         {
@@ -58,10 +55,9 @@
           "text": "最近の体温感覚は？",
           "type": "choice",
           "options": [
-            "冷えやすい",
-            "暑がり・ほてる",
-            "変化なし",
-            "不明"
+            "冷え（寒）",
+            "平（どちらでもない）",
+            "暑/ほてり（熱）"
           ]
         },
         {
@@ -69,26 +65,24 @@
           "text": "体力や症状の強さは？",
           "type": "choice",
           "options": [
-            "虚（体力不足／疲れやすい）",
-            "実（症状が強い）",
+            "虚（体力低下）",
             "中間",
-            "不明"
+            "実（症状が強い）"
           ]
         },
         {
-          "id": "hyou_ri",
+          "id": "han_netsu",
           "text": "症状の範囲は？",
           "type": "choice",
           "options": [
-            "表（皮膚・筋肉など外側）",
-            "裏（内臓・深部）",
-            "不明"
+            "表（表面）",
+            "半表半裏",
+            "裏（深部）"
           ]
         }
       ]
     },
     {
-      "id": "ki_ketsu_sui",
       "title": "気血水の状態",
       "questions": [
         {
@@ -102,18 +96,13 @@
           "type": "boolean"
         },
         {
-          "id": "ki_rebellion",
-          "text": "のぼせ・吐き気・動悸（気逆）",
-          "type": "boolean"
-        },
-        {
           "id": "blood_def",
-          "text": "顔色が白い・唇が淡い・爪が割れやすい（血虚）",
+          "text": "のぼせ・唇や爪が淡い（血虚）",
           "type": "boolean"
         },
         {
           "id": "yu_xue",
-          "text": "くすみ・刺す痛み・紫斑（瘀血）",
+          "text": "顔色が暗い・肩こり・刺す痛み（瘀血）",
           "type": "boolean"
         },
         {
@@ -124,7 +113,6 @@
       ]
     },
     {
-      "id": "tongue",
       "title": "舌診",
       "questions": [
         {
@@ -133,166 +121,45 @@
           "type": "choice",
           "options": [
             "淡紅",
-            "赤",
-            "暗赤",
-            "紫",
-            "不明"
+            "紅",
+            "淡白",
+            "紫暗",
+            "その他"
           ]
         },
         {
-          "id": "tongue_coating",
+          "id": "tongue_coat",
           "text": "舌苔",
           "type": "choice",
           "options": [
-            "白",
-            "黄色",
-            "厚い",
-            "薄い",
-            "なし",
-            "不明"
-          ]
-        },
-        {
-          "id": "tongue_shape",
-          "text": "舌の形",
-          "type": "choice",
-          "options": [
-            "腫れぼったい",
-            "細い",
-            "歯痕あり",
-            "亀裂あり",
-            "不明"
-          ]
-        },
-        {
-          "id": "tongue_moist",
-          "text": "舌の潤い",
-          "type": "choice",
-          "options": [
-            "しっとり",
-            "乾燥",
-            "不明"
+            "薄白",
+            "厚白",
+            "黄",
+            "無苔",
+            "その他"
           ]
         }
       ]
     },
     {
-      "id": "pulse",
-      "title": "脈診",
+      "title": "生活・睡眠",
       "questions": [
         {
-          "id": "pulse_speed",
-          "text": "脈の速さ",
+          "id": "sleep_quality",
+          "text": "睡眠の質",
           "type": "choice",
           "options": [
-            "速い",
+            "良い",
             "普通",
-            "遅い",
-            "不明"
+            "悪い"
           ]
         },
         {
-          "id": "pulse_strength",
-          "text": "脈の強さ",
-          "type": "choice",
-          "options": [
-            "強い",
-            "普通",
-            "弱い",
-            "不明"
-          ]
-        },
-        {
-          "id": "pulse_quality",
-          "text": "脈の質（感覚）",
-          "type": "choice",
-          "options": [
-            "弦（張って硬い）",
-            "滑（つるつる流れる）",
-            "細（細く弱い）",
-            "その他/不明"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "face",
-      "title": "顔色（任意）",
-      "questions": [
-        {
-          "id": "face_color",
-          "text": "顔の状態",
-          "type": "choice",
-          "options": [
-            "赤みが強い/火照り",
-            "青白い",
-            "暗い/くすみ",
-            "むくんでいる",
-            "変化なし",
-            "不明"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "lifestyle",
-      "title": "生活・習慣",
-      "questions": [
-        {
-          "id": "sleep",
-          "text": "睡眠の状態",
-          "type": "choice",
-          "options": [
-            "よく眠れる",
-            "入眠困難",
-            "中途覚醒",
-            "早朝覚醒"
-          ]
-        },
-        {
-          "id": "appetite",
-          "text": "食欲",
-          "type": "choice",
-          "options": [
-            "普通",
-            "低下",
-            "亢進",
-            "むらがある"
-          ]
-        },
-        {
-          "id": "bowel",
-          "text": "排便",
-          "type": "choice",
-          "options": [
-            "普通",
-            "便秘",
-            "下痢",
-            "下痢と便秘をくり返す"
-          ]
-        },
-        {
-          "id": "sweating",
-          "text": "発汗",
-          "type": "choice",
-          "options": [
-            "普通",
-            "多い",
-            "少ない"
-          ]
-        },
-        {
-          "id": "stress",
-          "text": "ストレス",
-          "type": "choice",
-          "options": [
-            "少ない",
-            "中等度",
-            "強い"
-          ]
+          "id": "diet",
+          "text": "食事傾向（自由記述）",
+          "type": "textarea"
         }
       ]
     }
-  ],
-  "ai_instructions": "全回答をもとに八綱分類＋気血水＋舌・脈・顔色＋主訴を解析し、証を決定。漢方薬候補3種類と選定理由、患者向け説明、薬膳と日常生活アドバイス、赤旗（受診目安）を出力すること。男性には妊娠関連の注意を出さない。JSONで返すこと。"
+  ]
 }
