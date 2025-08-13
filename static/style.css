@@ -1,0 +1,68 @@
+/* Base reset */
+*{box-sizing:border-box}
+:root{
+  --bg:#0b0c10;
+  --card:#11131a;
+  --card-2:#171a22;
+  --text:#e9eef5;
+  --muted:#9aa5b1;
+  --accent:#33c3ff;
+  --accent-2:#9bffdd;
+  --border:#232735;
+  --chip:#1f2430;
+  --shadow:0 10px 30px rgba(0,0,0,.25);
+}
+html,body{margin:0;padding:0;background:linear-gradient(180deg,#0b0c10,#0f1117) fixed;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
+a{color:var(--accent);text-decoration:none}
+a:hover{opacity:.9}
+
+/* Layout */
+.container{max-width:1000px;margin:0 auto;padding:16px}
+.app-header,.app-footer{border-bottom:1px solid var(--border);background:rgba(255,255,255,.02);backdrop-filter:blur(6px)}
+.app-footer{border-top:1px solid var(--border);border-bottom:none}
+.app-header .container,.app-footer .container{display:flex;align-items:center;justify-content:space-between}
+.app-header h1{font-size:20px;margin:8px 0}
+.app-header nav a{margin-left:16px}
+.small{font-size:12px}
+.muted{color:var(--muted)}
+
+/* Cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin:18px 0;box-shadow:var(--shadow)}
+.subcard{background:var(--card-2);border:1px dashed var(--border);border-radius:12px;padding:12px;margin:12px 0}
+
+/* Table */
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-bottom:1px solid var(--border);padding:10px;vertical-align:top}
+.table th{color:var(--muted);font-weight:600;text-align:left}
+
+/* Form */
+.form-grid .section{margin-bottom:24px}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:720px){.grid-2{grid-template-columns:1fr}}
+.field label{display:block;margin-bottom:6px;color:var(--muted);font-size:13px}
+input[type="text"],input[type="number"],select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card-2);color:var(--text);outline:none}
+input[type="text"]:focus,input[type="number"]:focus,select:focus{border-color:var(--accent)}
+
+/* Switch */
+.switch{position:relative;display:inline-block;width:44px;height:24px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#3a3f4b;transition:.2s;border-radius:999px}
+.slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;top:3px;background:#d0d6e2;border-radius:50%;transition:.2s}
+.switch input:checked + .slider{background:linear-gradient(45deg,var(--accent),var(--accent-2))}
+.switch input:checked + .slider:before{transform:translateX(20px)}
+
+/* Buttons */
+.btn{display:inline-block;padding:10px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card-2);color:var(--text);cursor:pointer}
+.btn:hover{filter:brightness(1.05)}
+.btn.primary{background:linear-gradient(45deg,var(--accent),var(--accent-2));color:#021017;border:none}
+.btn.small{padding:6px 10px;border-radius:8px;font-size:12px}
+
+/* Chips */
+.chips{margin-top:6px}
+.chips span{display:inline-block;background:var(--chip);border:1px solid var(--border);border-radius:999px;padding:6px 10px;margin:4px 6px 0 0;font-size:12px}
+
+/* Misc */
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;color:#b6c2d0}
+.rank{font-weight:700;margin-bottom:6px}
+.highlight{padding:10px 12px;border-left:4px solid var(--accent);background:rgba(51,195,255,.08);border-radius:10px}
+.tight li{margin:4px 0}

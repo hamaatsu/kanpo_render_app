@@ -1,237 +1,229 @@
-
 # -*- coding: utf-8 -*-
-import os, json, uuid, datetime, re
+from __future__ import annotations
+import os, json, uuid, datetime as dt
 from pathlib import Path
+from typing import Any, Dict, List
 from flask import Flask, render_template, request, redirect, url_for, abort
-from markupsafe import escape
 
 APP_DIR = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.getenv("DATA_ROOT", "/tmp/kanpo_ai"))
 UPLOAD_DIR = DATA_ROOT / "uploads"
 DATA_DIR = DATA_ROOT / "data"
-for d in (UPLOAD_DIR, DATA_DIR):
+for d in (DATA_ROOT, UPLOAD_DIR, DATA_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-# Load questionnaire
+# Load questionnaire once
 QUESTIONNAIRE_PATH = APP_DIR / "ai_kampo_questionnaire.json"
-with QUESTIONNAIRE_PATH.open(encoding="utf-8") as f:
+with QUESTIONNAIRE_PATH.open("r", encoding="utf-8") as f:
     QUESTIONNAIRE = json.load(f)
 
 app = Flask(__name__)
 
-# --- Helpers ---
-def now_iso():
-    return datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
+def now_iso() -> str:
+    return dt.datetime.utcnow().isoformat() + "Z"
 
-def read_records():
-    items = []
-    for p in sorted(DATA_DIR.glob("*.json"), reverse=True):
+def read_all_records() -> List[Dict[str, Any]]:
+    recs = []
+    for p in DATA_DIR.glob("*.json"):
         try:
-            items.append(json.loads(p.read_text(encoding="utf-8")))
+            with p.open("r", encoding="utf-8") as f:
+                recs.append(json.load(f))
         except Exception:
             continue
-    return items
+    recs.sort(key=lambda x: x.get("submitted_at",""), reverse=True)
+    return recs
 
-def save_record(rec):
-    rid = rec["id"]
-    (DATA_DIR / f"{rid}.json").write_text(json.dumps(rec, ensure_ascii=False, indent=2), encoding="utf-8")
+# --- Simple rule fallback when no OpenAI key ---
+def simple_assess(form: Dict[str, Any]) -> Dict[str, Any]:
+    # naive mapping to keep server alive without API key
+    chief = (form.get("chief_complaint") or "").lower()
+    sex = (form.get("gender") or "").lower()
+    kyo = "虚" if ("疲" in chief or form.get("kyo_jitsu","").startswith("虚")) else "中間"
+    heat = "寒" if form.get("cold_heat","").startswith("冷") else ("熱" if "ほて" in form.get("cold_heat","") else "中間")
+    qi = "気滞" if ("張" in chief or form.get("ki_stagnation")) else ("気虚" if form.get("ki_deficiency") else "正常")
+    xue = "瘀血" if form.get("yu_xue") else ("血虚" if form.get("blood_def") else "正常")
+    sui = "水滞" if form.get("sui_ret") else "正常"
 
-def _filter_script_for_sex(script, sex):
-    if not isinstance(script, dict):
-        return script
-    w = script.get("watch", "") or ""
-    if (sex or "").lower() not in ["female", "woman", "女性", "女"]:
-        w = re.sub(r"妊娠中[^。]*。?", "", w)
-    return {**script, "watch": w.strip()}
+    # crude scoring
+    formulas = {"葛根湯":0,"疎経活血湯":0,"川芎茶調散":0,"釣藤散":0,"桂枝茯苓丸":0,
+                "補中益気湯":0,"六君子湯":0,"当帰芍薬散":0,"五苓散":0,"真武湯":0,"人参湯":0,"竹葉石膏湯":0}
+    if "肩" in chief:
+        for k in ["葛根湯","疎経活血湯","川芎茶調散","釣藤散","桂枝茯苓丸"]:
+            formulas[k] += 3
+    if qi=="気虚": formulas["補中益気湯"] += 2
+    if xue=="瘀血": formulas["桂枝茯苓丸"] += 2
+    if sui=="水滞": formulas["五苓散"] += 2
+    if heat=="熱": formulas["竹葉石膏湯"] += 2
+    ranked = sorted(formulas.items(), key=lambda x: x[1], reverse=True)
+    top3 = [k for k,_ in ranked[:3]]
+    scripts = {
+        "葛根湯":"首肩のこわばりなど、急性の筋肉の張りに。体を温めて巡りを助けます。",
+        "疎経活血湯":"慢性的なこわばりや冷えで悪化する痛みに。血行促進をねらいます。",
+        "川芎茶調散":"肩こりを伴う頭痛・気象病に。気血の巡りを助けます。",
+        "釣藤散":"肩こり＋頭痛・めまい・イライラに。中高年の上衝に。",
+        "桂枝茯苓丸":"刺すような痛み・しこり・瘀斑。瘀血傾向のときに。",
+        "補中益気湯":"疲れやすい・食欲低下などの気虚に。",
+        "六君子湯":"胃もたれ・軟便の気虚＋痰湿に。",
+        "当帰芍薬散":"冷え・むくみ・立ちくらみ傾向に。",
+        "五苓散":"口渇・尿少・むくみ・頭重に。",
+        "真武湯":"冷え＋めまい・むくみの水滞に。",
+        "人参湯":"冷えによる腹痛/下痢などの虚寒に。",
+        "竹葉石膏湯":"ほてり・口渇・だるさ同時のときに。"
+    }
+    cands = []
+    for i, name in enumerate(top3):
+        cands.append({
+            "name": name,
+            "score": ranked[i][1],
+            "pharmacist_tip": scripts.get(name,""),
+            "script": {"explain": scripts.get(name,""), "watch": ""},
+            "lifestyle": ["同一姿勢を避ける","温かい飲み物","軽い運動"],
+            "foods_good": ["ねぎ","しょうが","玉ねぎ"],
+            "foods_avoid": ["冷たい飲料","甘味過多"],
+            "counsel_points": ["痛みの質・時間帯","冷え/天候での増悪"]
+        })
+    patient_summary = f"体のバランスとしては『{kyo}・{heat}』傾向で、気血水では『{qi}/{xue}/{sui}』が示唆されます。主訴との関連を踏まえ、巡りを整える方針で提案しています。"
+    return {
+        "chosen": cands[0]["name"] if cands else "",
+        "candidates": cands,
+        "axes": {"jitsu_kyo": kyo, "kan_netsu": heat, "hyo_ri": form.get('hyou_ri','')},
+        "qxs": {"qi": qi, "xue": xue, "sui": sui},
+        "patient_summary": patient_summary,
+        "chief_note": "主訴を優先してスコア補正しています。",
+        "diet": ["生姜スープ","陳皮茶","玉ねぎ"],
+        "lifestyle": ["45分に1回立つ","首肩の温罨法","深い呼吸"],
+        "topics": ["気のめぐりと肩こり","睡眠と回復力"],
+        "complaint_sections": [{
+            "title":"主訴に直結するアドバイス",
+            "background":"巡りの低下や冷えが背景にあります。",
+            "do":["肩甲骨はがし","温湿布","深呼吸"],
+            "foods_good":["陳皮","生姜","ねぎ"],
+            "foods_avoid":["冷たい飲料","脂っこいもの"],
+            "points":["長時間の同一姿勢を避ける","湯船で温める"],
+            "acupoints":["肩井","風池","合谷"],
+            "danger":["片側の脱力/しびれが出たら受診"]
+        }]
+    }
 
-def call_openai_assess(payload):
+def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return None, "OPENAI_API_KEY is missing"
+        return simple_assess(form)
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
-        system = (
+        sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
-            "与えられた問診（八綱：寒熱/虚実/表裏＋気血水＋舌診＋脈診＋顔色＋主訴）を総合評価して『証』を決定し、"
-            "漢方薬の候補Top3をJSONで返してください。"
-            "必ず以下の構造で、JSONのみを出力:
-"
-            "{\n"
-            "  \"axes\": { \"jitsu_kyo\": \"虚|実|中間\", \"kan_netsu\": \"寒|熱|中間\", \"hyo_ri\": \"表|裏|不明\" },\n"
-            "  \"qxs\": { \"qi\": \"deficiency|stagnation|rebellion|normal\", \"xue\": \"deficiency|stasis|normal\", \"sui\": \"retention|deficiency|normal\" },\n"
-            "  \"candidates\": [\n"
-            "    { \"name\": \"...\", \"reason\": \"主訴と証に基づく理由\", \"patient_explain\": \"3-6文のやさしい説明\", \"foods_good\":[], \"foods_avoid\":[], \"lifestyle\":[], \"counsel_points\":[] },\n"
-            "    { ... },\n"
-            "    { ... }\n"
-            "  ],\n"
-            "  \"chosen\": \"上位の方剤名\",\n"
-            "  \"patient_summary\": \"主訴に直結する3-6文の説明（今日からの具体策を含む）\",\n"
-            "  \"red_flags\": [\"受診を勧めるべきサイン\"],\n"
-            "  \"topics\": [\"会話のきっかけ\"],\n"
-            "  \"diet\": [\"薬膳食材\"],\n"
-            "  \"lifestyle\": [\"日常生活のアドバイス\"]\n"
-            "}\n"
-            "制約: 必ず候補は3つ。男性には妊娠関連の注意は出さない。"
+            "以下の問診（八綱：寒熱・虚実・表裏、気血水、舌・脈・顔色、主訴、生活）を総合し、"
+            "証を決定し、漢方薬Top3、各理由、患者向け説明（3〜6文）、薬膳（推奨/控え）、生活、面談深掘り、赤旗（受診目安）をJSONで返してください。"
+            "男性には妊娠関連の注意は出さないでください。"
+            "出力は必ずJSONで、例: {\"candidates\":[{\"name\":\"葛根湯\",\"reason\":\"...\"}],\"patient_summary\":\"...\",\"advice\":{}}"
         )
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-        messages = [
-            {"role":"system", "content": system},
-            {"role":"user", "content": json.dumps(payload, ensure_ascii=False)}
-        ]
-        resp = client.chat.completions.create(model=model, temperature=0.3, messages=messages)
+        user = {"form": form}
+        model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+        resp = client.chat.completions.create(
+            model=model, temperature=0.3,
+            messages=[{"role":"system","content":sys_prompt},
+                      {"role":"user","content":json.dumps(user, ensure_ascii=False)}]
+        )
         content = resp.choices[0].message.content
         try:
-            data = json.loads(content)
+            parsed = json.loads(content)
         except Exception:
-            # Try to extract JSON via regex
-            import re as _re
-            m = _re.search(r'\{[\s\S]*\}', content)
-            if m:
-                data = json.loads(m.group(0))
-            else:
-                return None, f"LLM returned non-JSON: {content[:200]}"
-        return data, None
+            parsed = {"llm_text": content}
+        # normalize to app structure
+        cands = []
+        for it in (parsed.get("candidates") or []):
+            name = it.get("name","")
+            cands.append({
+                "name": name,
+                "score": it.get("score", 1.0),
+                "pharmacist_tip": it.get("pharmacist_tip",""),
+                "script": {"explain": it.get("patient_explain",""), "watch": it.get("watch","")},
+                "lifestyle": it.get("lifestyle", []),
+                "foods_good": it.get("foods_good", []),
+                "foods_avoid": it.get("foods_avoid", []),
+                "counsel_points": it.get("counsel_points", []),
+                "ai_reason": it.get("reason","")
+            })
+        assessment = {
+            "chosen": (cands[0]["name"] if cands else ""),
+            "candidates": cands,
+            "axes": parsed.get("axes", {}),
+            "qxs": parsed.get("qxs", {}),
+            "patient_summary": parsed.get("patient_summary",""),
+            "chief_note": parsed.get("chief_note",""),
+            "diet": parsed.get("diet", []),
+            "lifestyle": parsed.get("lifestyle", []),
+            "topics": parsed.get("topics", []),
+            "complaint_sections": parsed.get("complaint_sections", []),
+            "llm_raw": parsed
+        }
+        # remove pregnancy warnings for non-female
+        if (sex or "").lower() not in ["female","woman","女性","女"]:
+            def _strip_preg(text: str) -> str:
+                import re as _re
+                return _re.sub(r"妊娠中[^。]*。?", "", text or "")
+            assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary",""))
+            for c in assessment["candidates"]:
+                if isinstance(c.get("script"), dict):
+                    c["script"]["watch"] = _strip_preg(c["script"].get("watch",""))
+        return assessment
     except Exception as e:
-        return None, f"{type(e).__name__}: {e}"
+        # Fallback on any error
+        ass = simple_assess(form)
+        ass["llm_error"] = f"{type(e).__name__}: {e}"
+        return ass
 
-# --- Routes ---
 @app.route("/")
 def index():
-    return render_template("index.html", questionnaire=QUESTIONNAIRE)
+    return render_template("index.html", q=QUESTIONNAIRE)
 
 @app.route("/submit", methods=["POST"])
 def submit():
-    form = request.form.to_dict()
-    # Build payload for AI from questionnaire keys only
-    answers = {}
-    for sec in QUESTIONNAIRE.get("sections", []):
-        for q in sec.get("questions", []):
-            qid = q.get("id")
-            if not qid: 
-                continue
-            answers[qid] = form.get(qid, "")
-
+    # collect form
+    data = {}
+    for sec in QUESTIONNAIRE["sections"]:
+        for q in sec["questions"]:
+            val = request.form.get(q["id"], "").strip()
+            if q["type"] == "boolean":
+                data[q["id"]] = (request.form.get(q["id"]) == "on")
+            else:
+                data[q["id"]] = val
     rec_id = str(uuid.uuid4())
-    sex = answers.get("gender","")
-    payload = {
-        "meta": {
-            "id": rec_id,
-            "submitted_at": now_iso()
-        },
-        "patient": {
-            "name": answers.get("name",""),
-            "age": answers.get("age",""),
-            "sex": answers.get("gender",""),
-            "region": answers.get("region","")
-        },
-        "chief_complaint": answers.get("chief_complaint",""),
-        "onset": answers.get("onset",""),
-        "hakkou": {
-            "cold_heat": answers.get("cold_heat",""),
-            "kyo_jitsu": answers.get("kyo_jitsu",""),
-            "hyou_ri": answers.get("hyou_ri","")
-        },
-        "qxs_input": {
-            "ki_deficiency": answers.get("ki_deficiency",""),
-            "ki_stagnation": answers.get("ki_stagnation",""),
-            "blood_color": answers.get("blood_color",""),
-            "lip_nail_color": answers.get("lip_nail_color",""),
-            "menstrual_info": answers.get("menstrual_info","") if sex in ["女性","female","Female"] else "",
-            "water_retention": answers.get("water_retention","")
-        },
-        "tongue": {
-            "color": answers.get("tongue_color",""),
-            "coating": answers.get("tongue_coating",""),
-            "shape": answers.get("tongue_shape","")
-        },
-        "pulse": {
-            "quality": answers.get("pulse_quality","")
-        },
-        "face": {
-            "color": answers.get("face_color","")
-        },
-        "lifestyle": {
-            "sleep": answers.get("sleep",""),
-            "appetite": answers.get("appetite",""),
-            "bowel": answers.get("bowel",""),
-            "sweating": answers.get("sweating","")
-        },
-        "pain": answers.get("pain","")
-    }
+    sex = data.get("gender","")
+    assessment = call_openai(data, sex)
 
-    ai_data, err = call_openai_assess(payload)
-    assessment = {}
-    if ai_data and isinstance(ai_data, dict):
-        # Filter pregnancy notes for male
-        if (sex or "").lower() not in ["female","woman","女性","女"]:
-            if "patient_summary" in ai_data and isinstance(ai_data["patient_summary"], str):
-                ai_data["patient_summary"] = re.sub(r"妊娠中[^。]*。?", "", ai_data["patient_summary"])
-            for c in ai_data.get("candidates", []):
-                if isinstance(c, dict) and "patient_explain" in c:
-                    c["patient_explain"] = re.sub(r"妊娠中[^。]*。?", "", c.get("patient_explain",""))
-        assessment = ai_data
-    else:
-        # Fallback minimal assessment
-        cc = payload["chief_complaint"]
-        candidates = []
-        if "肩" in cc or "首" in cc:
-            candidates = [
-                {"name":"葛根湯","reason":"項背部のこわばりと悪寒に。","patient_explain":"首肩のこわばりに対応します。体を温めて巡りを助けます。","foods_good":["生姜","ねぎ"],"foods_avoid":["冷飲"],"lifestyle":["温罨法","軽い体操"],"counsel_points":["寒気の有無","発汗の有無"]},
-                {"name":"疎経活血湯","reason":"慢性の肩こりや冷えで悪化。","patient_explain":"血行を促し、こわばりを和らげます。","foods_good":["黒きくらげ"],"foods_avoid":[],"lifestyle":["入浴"],"counsel_points":[]},
-                {"name":"桂枝茯苓丸","reason":"瘀血所見がある肩こりに。","patient_explain":"血の滞りをさばきます。","foods_good":["玉ねぎ","酢"],"foods_avoid":[],"lifestyle":["適度な運動"],"counsel_points":[]}
-            ]
-        else:
-            candidates = [
-                {"name":"六君子湯","reason":"胃もたれ・食欲不振に。","patient_explain":"胃腸を助けます。","foods_good":["山芋"],"foods_avoid":["冷飲"],"lifestyle":["少量頻回"],"counsel_points":[]},
-                {"name":"補中益気湯","reason":"だるさと気虚に。","patient_explain":"気を補います。","foods_good":["鶏肉","なつめ"],"foods_avoid":[],"lifestyle":["休息"],"counsel_points":[]},
-                {"name":"当帰芍薬散","reason":"むくみ・冷えに。","patient_explain":"血と水のバランスを整えます。","foods_good":["黒豆"],"foods_avoid":[],"lifestyle":["保温"],"counsel_points":[]}
-            ]
-        assessment = {
-            "axes":{"jitsu_kyo":"chukan","kan_netsu":"neutral","hyo_ri":"unknown"},
-            "qxs":{"qi":"normal","xue":"normal","sui":"normal"},
-            "candidates": candidates,
-            "chosen": candidates[0]["name"],
-            "patient_summary":"主訴に合わせて生活と食事を整えましょう。",
-            "diet":["山芋","なつめ","黒きくらげ"],
-            "lifestyle":["体を冷やさない","軽い運動"],
-            "topics":["生活リズムの見直し"]
-        }
-
-    # Compose record
     record = {
         "id": rec_id,
-        "submitted_at": payload["meta"]["submitted_at"],
+        "submitted_at": now_iso(),
         "patient": {
-            "name": payload["patient"]["name"],
-            "age": payload["patient"]["age"],
-            "sex": payload["patient"]["sex"],
-            "region": payload["patient"]["region"],
-            "chief_complaint": payload["chief_complaint"]
+            "name": data.get("name",""),
+            "age": data.get("age",""),
+            "sex": data.get("gender",""),
+            "region": data.get("region",""),
+            "chief_complaint": data.get("chief_complaint",""),
         },
         "ai_assessment": assessment,
-        "payload": payload
+        "raw": data
     }
-    save_record(record)
+    with (DATA_DIR/f"{rec_id}.json").open("w", encoding="utf-8") as f:
+        json.dump(record, f, ensure_ascii=False, indent=2)
     return redirect(url_for("detail", rec_id=rec_id))
 
 @app.route("/record/<rec_id>")
-def detail(rec_id):
-    p = DATA_DIR / f"{escape(rec_id)}.json"
+def detail(rec_id: str):
+    p = DATA_DIR/f"{rec_id}.json"
     if not p.exists():
         abort(404)
-    data = json.loads(p.read_text(encoding="utf-8"))
-    return render_template("detail.html", data=data)
+    with p.open("r", encoding="utf-8") as f:
+        record = json.load(f)
+    return render_template("detail.html", data=record)
 
 @app.route("/admin")
 def admin():
-    items = read_records()
-    return render_template("admin.html", items=items)
-
-# Healthcheck
-@app.route("/healthz")
-def healthz():
-    return "ok", 200
+    recs = read_all_records()
+    return render_template("admin.html", recs=recs)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "10000")), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
