@@ -1,248 +1,57 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>漢方AI問診（v10 主訴優先＋画像活用メモ）</title>
+<title>AI漢方相談 v14</title>
 <style>
-  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
-  .section{border:1px solid #ddd;border-radius:10px;padding:14px;margin:14px 0;background:#fff}
-  .grid2{display:grid;grid-template-columns:1.2fr 0.8fr;gap:14px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .row{display:flex;align-items:flex-start;gap:8px;margin:6px 0}
-  .row input[type="checkbox"]{width:20px;height:20px;margin-top:2px}
-  label{display:block;margin:0}
-  input,select,textarea{width:100%;padding:12px;box-sizing:border-box;border-radius:8px;border:1px solid #ccc}
-  button{padding:12px 16px;border:none;border-radius:10px;background:#2a6; color:#fff; font-size:16px}
-  .pill{display:inline-block;padding:6px 12px;border-radius:999px;background:#f5f5f5;margin:2px 6px 2px 0;font-size:13px}
-  .hint{color:#555;font-size:13px}
-  summary{cursor:pointer}
-  .side{background:#fafafa;border:1px dashed #ddd;border-radius:10px;padding:12px;position:sticky;top:8px;height:fit-content}
-  .side h4{margin:4px 0}
-  .itemhelp{font-size:12px;color:#666;margin-left:26px}
-  @media (max-width: 900px){
-    .grid2{grid-template-columns:1fr}
-    .grid{grid-template-columns:1fr}
-    button{width:100%}
-  }
+  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.55}
+  h2{margin-top:0}
+  .sec{border:1px solid #e5e5e5;border-radius:12px;padding:14px 16px;margin:14px 0;background:#fff}
+  .row{margin:8px 0}
+  label{display:block;font-weight:600;margin:6px 0 4px}
+  input[type=text],input[type=number],select,textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:10px}
+  .btn{display:inline-block;background:#0a7cff;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+  .hint{color:#666;font-size:12px}
 </style>
 </head>
 <body>
-<h1>漢方AI問診（v10）</h1>
-
-<details class="section" open>
-  <summary><strong>初心者薬剤師向けガイド（10分相談フロー）</strong></summary>
-  <ol class="hint" style="padding-left:20px">
-    <li>主訴を1文で（いつ/どこで/何をすると/どうなる）</li>
-    <li>寒熱（温め楽？冷え苦手？ほてり/口渇/寝汗）</li>
-    <li>消化（食欲/もたれ/便通/下痢・便秘の条件）</li>
-    <li>睡眠（寝つき/中途覚醒/夢/朝のだるさ）</li>
-    <li>（女性のみ）月経（周期/量/痛み/PMS）</li>
-    <li>ストレス・運動・冷暖房・カフェイン/アルコール</li>
-  </ol>
-</details>
-
-<form action="/submit" method="post" enctype="multipart/form-data" onsubmit="syncHidden();">
-<div class="grid2">
-  <div>
-    <div class="section">
-      <h3>基本情報</h3>
-      <div class="grid">
-        <div><label>氏名<input name="name" required></label></div>
-        <div><label>年齢<input type="number" name="age" min="0" max="120"></value></label></div>
-        <div><label>性別<select name="sex"><option value="">未選択</option><option value="female">女性</option><option value="male">男性</option><option value="other">その他</option></select></label></div>
-        <div><label>地域<input name="region"></label></div>
+  <h2>AI漢方相談 v14</h2>
+  <form action="/submit" method="post">
+    {% for sec in questionnaire.sections %}
+      <div class="sec">
+        <h3>{{ sec.title }}</h3>
+        {% for q in sec.questions %}
+          <div class="row">
+            <label for="{{ q.id }}">{{ q.text }}</label>
+            {% if q.type == "text" %}
+              <input type="text" name="{{ q.id }}" id="{{ q.id }}">
+            {% elif q.type == "number" %}
+              <input type="number" name="{{ q.id }}" id="{{ q.id }}" min="0">
+            {% elif q.type == "choice" %}
+              <select name="{{ q.id }}" id="{{ q.id }}">
+                <option value="">（選択してください）</option>
+                {% for opt in q.options %}
+                  <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+              </select>
+            {% elif q.type == "boolean" %}
+              <select name="{{ q.id }}" id="{{ q.id }}">
+                <option value="">（選択してください）</option>
+                <option value="yes">はい</option>
+                <option value="no">いいえ</option>
+              </select>
+            {% else %}
+              <input type="text" name="{{ q.id }}" id="{{ q.id }}">
+            {% endif %}
+            {% if q.hint %}<div class="hint">{{ q.hint }}</div>{% endif %}
+          </div>
+        {% endfor %}
       </div>
-      <label>主訴（そのままでOK）<textarea name="chief_complaint" rows="2" placeholder="例：肉を食べると15分で下痢／雨の日に頭痛がひどい／冷たい飲み物でお腹を壊す…"></textarea></label>
-      <div class="hint">主訴は**最優先**でアドバイスに反映されます。</div>
-    </div>
-
-    <div class="section">
-      <h3>チェックリスト（クリックで自動判定）</h3>
-      <div class="grid">
-        <div>
-          <h4>実・虚</h4>
-          <div class="row"><input type="checkbox" class="v-flag" data-type="kyo" id="v1"><label for="v1">休んだら楽/声小/自汗/食後眠い/脈弱/舌淡・歯痕 <span class="hint">(虚+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="v-flag" data-type="jitsu" id="v2"><label for="v2">痛み強い/便秘/怒りやすい/肩ガチ/脈実/舌暗紫・厚苔 <span class="hint">(実+1)</span></label></div>
-
-          <h4>寒・熱</h4>
-          <div class="row"><input type="checkbox" class="c-flag" data-type="kan" id="c1"><label for="c1">冷える/温め楽/冷飲苦手/薄白苔/顔青白 <span class="hint">(寒+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="c-flag" data-type="netsu" id="c2"><label for="c2">ほてり・口渇/寝汗/便秘・黄色尿/舌紅・黄苔/顔赤い <span class="hint">(熱+1)</span></label></div>
-
-          <h4>表・裏</h4>
-          <div class="row"><input type="checkbox" class="b-flag" data-type="hyo" id="b1"><label for="b1">悪寒発熱/項背こわばり/汗が定まらない/急性 <span class="hint">(表+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="b-flag" data-type="ri" id="b2"><label for="b2">胃腸症状/慢性反復/深部の痛み・冷え <span class="hint">(裏+1)</span></label></div>
-        </div>
-
-        <div>
-          <h4>気・血・水</h4>
-          <div class="row"><input type="checkbox" class="q-flag" data-type="deficiency" id="q1"><label for="q1">すぐ疲れる・息切れ/声小/食後だるい・朝つらい <span class="hint">(気虚+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="q-flag" data-type="stagnation" id="q2"><label for="q2">張る・ため息/ストレスで悪化/脇〜みぞおちつまる <span class="hint">(気滞+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="q-flag" data-type="rebellion" id="q3"><label for="q3">のぼせ・げっぷ/逆流/咳き上げ <span class="hint">(気逆+1)</span></label></div>
-
-          <div class="row"><input type="checkbox" class="x-flag" data-type="deficiency" id="x1"><label for="x1">乾燥・不眠・めまい<span class="hint">（女性：月経量少）</span></label></div>
-          <div class="row"><input type="checkbox" class="x-flag" data-type="stasis" id="x2"><label for="x2">刺痛/固定痛<span class="hint">（女性：月経痛・塊）</span></label></div>
-
-          <div class="row"><input type="checkbox" class="s-flag" data-type="retention" id="s1"><label for="s1">むくみ/頭重/雨で悪化/軟便/厚白苔/脈滑 <span class="hint">(水滞+1)</span></label></div>
-          <div class="row"><input type="checkbox" class="s-flag" data-type="deficiency" id="s2"><label for="s2">口乾/皮膚乾燥/咽乾/便秘気味/無苔寄り <span class="hint">(津液不足+1)</span></label></div>
-        </div>
-      </div>
-
-      <div style="margin-top:8px">
-        <span class="pill" id="badge-jk">実虚：—</span>
-        <span class="pill" id="badge-cn">寒熱：—</span>
-        <span class="pill" id="badge-br">表裏：—</span>
-        <span class="pill" id="badge-qi">気：—</span>
-        <span class="pill" id="badge-xue">血：—</span>
-        <span class="pill" id="badge-sui">水：—</span>
-      </div>
-    </div>
-
-    <div class="section">
-      <h3>視診（任意・写真＋所見メモ）</h3>
-      <div class="grid">
-        <div>
-          <h4>脈</h4>
-          <label>力<select name="pulse_strength"><option value="">未選択</option><option value="strong">強</option><option value="normal">平</option><option value="weak">弱</option></select></label>
-          <label>速さ<select name="pulse_rate"><option value="">未選択</option><option value="rapid">速い（数）</option><option value="normal">普通（平）</option><option value="slow">遅い（遅）</option></select></label>
-          <label>性状<select name="pulse_quality"><option value="">未選択</option><option value="wiry">弦（張る）</option><option value="slippery">滑（ヌルッ）</option><option value="rough">渋（ぎこちない）</option><option value="none">特になし</option></select></label>
-        </div>
-        <div>
-          <h4>顔色</h4>
-          <label>顔色<select name="face_color"><option value="">未選択</option><option value="pale">蒼白</option><option value="red">紅</option><option value="sallow">黄</option><option value="dark">暗</option></select></label>
-        </div>
-      </div>
-
-      <h4>舌</h4>
-      <div class="grid">
-        <div>
-          <label>色<select name="tongue_color"><option value="">未選択</option><option value="pale">淡</option><option value="light_red">淡紅</option><option value="red">紅</option><option value="dark_purple">暗紫</option></select></label>
-        </div>
-        <div>
-          <label>体<select name="tongue_body"><option value="">未選択</option><option value="thin">薄</option><option value="swollen">腫大</option><option value="scalloped">歯痕</option><option value="normal">平</option></select></label>
-        </div>
-        <div>
-          <label>苔<select name="tongue_coat"><option value="">未選択</option><option value="none">無苔</option><option value="thin_white">薄白</option><option value="thick_white">厚白</option><option value="yellow">黄苔</option><option value="gray_black">灰黒</option></select></label>
-        </div>
-        <div>
-          <label>湿<select name="tongue_moisture"><option value="">未選択</option><option value="dry">乾</option><option value="normal">平</option><option value="wet">湿</option></select></label>
-        </div>
-      </div>
-      <label>舌の所見メモ<textarea name="tongue_note" rows="2" placeholder="例：歯痕あり／腫大／黄苔 など"></textarea></label>
-      <h4>顔/体/爪</h4>
-      <label>顔の所見メモ<textarea name="face_note" rows="2" placeholder="例：蒼白／紅潮／くすみ など"></textarea></label>
-      <label>体・むくみの所見メモ<textarea name="body_note" rows="2" placeholder="例：下肢のむくみ／冷え など"></textarea></label>
-      <label>爪の所見メモ<textarea name="nails_note" rows="2" placeholder="例：縦線／割れ／暗色 など"></textarea></label>
-      </div>
-
-    <input type="hidden" name="jitsu_kyo" id="jitsu_kyo">
-    <input type="hidden" name="kan_netsu" id="kan_netsu">
-    <input type="hidden" name="hyo_ri" id="hyo_ri">
-    <input type="hidden" name="qi" id="qi">
-    <input type="hidden" name="xue" id="xue">
-    <input type="hidden" name="sui" id="sui">
-
-    <div class="section">
-      <button type="submit">AI判定（主訴直結アドバイス＋方剤1種）</button>
-    </div>
-  </div>
-
-  <div class="side">
-    <h4>今の判定（自動）</h4>
-    <div><span class="pill" id="badge-jk">実虚：—</span></div>
-    <div><span class="pill" id="badge-cn">寒熱：—</span></div>
-    <div><span class="pill" id="badge-br">表裏：—</span></div>
-    <div><span class="pill" id="badge-qi">気：—</span></div>
-    <div><span class="pill" id="badge-xue">血：—</span></div>
-    <div><span class="pill" id="badge-sui">水：—</span></div>
-
-    <h4 style="margin-top:12px">次に確認すると良い項目</h4>
-    <ul id="nextHints" class="hint" style="padding-left:18px"></ul>
-
-    <h4 style="margin-top:12px">用語ミニ解説</h4>
-    <ul class="hint" style="padding-left:18px">
-      <li><b>数</b>：脈が速い。/ <b>遅</b>：脈が遅い。</li>
-      <li><b>弦</b>：糸のように張る脈。/ <b>滑</b>：指にヌルッと転がる。/ <b>渋</b>：ぎこちない。</li>
-      <li><b>歯痕</b>：舌縁のギザギザ（脾虚・水滞）。/ <b>腫大</b>：舌が厚い（湿/痰）。</li>
-    </ul>
-
-    <h4 style="margin-top:12px">カウンセリングTips</h4>
-    <ul class="hint" style="padding-left:18px">
-      <li>主訴の「条件」を特定：何を/いつ/どこで/どのくらいで悪化？</li>
-      <li>まず1つの生活介入＋1剤で2〜3週間評価</li>
-      <li>重大サイン（激痛・出血・麻痺など）は即医療へ</li>
-    </ul>
-  </div>
-</div>
-</form>
-
-<script>
-  const state = { kyo:0, jitsu:0, kan:0, netsu:0, hyo:0, ri:0,
-    qi:{deficiency:0,stagnation:0,rebellion:0},
-    xue:{deficiency:0,stasis:0},
-    sui:{retention:0,deficiency:0}
-  };
-
-  function updateHints(){
-    const ul = document.getElementById('nextHints');
-    ul.innerHTML='';
-    const tips=[];
-    if(state.kyo<2 && state.jitsu<2){tips.push('「休むと軽い？強い張り？」で 実・虚 をはっきり');}
-    if(state.kan<2 && state.netsu<2){tips.push('「温めると楽？冷たい物で悪化？」で 寒・熱 を確認');}
-    if(state.hyo<2 && state.ri<2){tips.push('急性か慢性か／表の感冒症状か／腹部症状か');}
-    tips.push('むくみ・頭重・天気で悪化 → 水滞を疑う');
-    tips.push('刺す固定痛（女性は月経塊）→ 瘀血を疑う');
-    tips.push('だるさ・息切れ・食後眠い → 気虚を疑う');
-    tips.forEach(t=>{const li=document.createElement('li'); li.textContent=t; ul.appendChild(li);});
-  }
-
-  function updateBadges(){
-    let jk='—';
-    if(state.kyo>=2 && state.jitsu<=1) jk='kyo';
-    else if(state.jitsu>=2 && state.kyo<=1) jk='jitsu';
-    else jk='chukan';
-    document.getElementById('badge-jk').textContent='実虚：'+(jk==='kyo'?'虚証':jk==='jitsu'?'実証':'中間証');
-    document.getElementById('jitsu_kyo').value=jk;
-
-    let cn='neutral';
-    if(state.kan>=2) cn='kan'; else if(state.netsu>=2) cn='netsu';
-    document.getElementById('badge-cn').textContent='寒熱：'+(cn==='kan'?'寒':cn==='netsu'?'熱':'不明');
-    document.getElementById('kan_netsu').value=cn;
-
-    let br='unknown';
-    if(state.hyo>=2) br='hyo'; else if(state.ri>=2) br='ri';
-    document.getElementById('badge-br').textContent='表裏：'+(br==='hyo'?'表':br==='ri'?'裏':'不明');
-    document.getElementById('hyo_ri').value=br;
-
-    let qiChoice='normal', qmax=-1;
-    for(const k in state.qi){ if(state.qi[k]>qmax){qmax=state.qi[k]; qiChoice=k;} }
-    document.getElementById('badge-qi').textContent='気：'+(qiChoice==='deficiency'?'気虚':qiChoice==='stagnation'?'気滞':qiChoice==='rebellion'?'気逆':'正常');
-    document.getElementById('qi').value=(qmax>0?qiChoice:'normal');
-
-    let xChoice='normal'; qmax=-1;
-    for(const k in state.xue){ if(state.xue[k]>qmax){qmax=state.xue[k]; xChoice=k;} }
-    document.getElementById('badge-xue').textContent='血：'+(xChoice==='deficiency'?'血虚':xChoice==='stasis'?'瘀血':'正常');
-    document.getElementById('xue').value=(qmax>0?xChoice:'normal');
-
-    let sChoice='normal'; qmax=-1;
-    for(const k in state.sui){ if(state.sui[k]>qmax){qmax=state.sui[k]; sChoice=k;} }
-    document.getElementById('badge-sui').textContent='水：'+(sChoice==='retention'?'水滞/痰湿':sChoice==='deficiency'?'津液不足':'正常');
-    document.getElementById('sui').value=(qmax>0?sChoice:'normal');
-
-    updateHints();
-  }
-
-  function attachHandlers(){
-    document.querySelectorAll('.v-flag').forEach(el=>{el.addEventListener('change', e=>{const t=e.target.dataset.type; state[t]+=e.target.checked?1:-1; updateBadges();});});
-    document.querySelectorAll('.c-flag').forEach(el=>{el.addEventListener('change', e=>{const t=e.target.dataset.type; state[t]+=e.target.checked?1:-1; updateBadges();});});
-    document.querySelectorAll('.b-flag').forEach(el=>{el.addEventListener('change', e=>{const t=e.target.dataset.type; state[t]+=e.target.checked?1:-1; updateBadges();});});
-    document.querySelectorAll('.q-flag').forEach(el=>{el.addEventListener('change', e=>{const t=e.target.dataset.type; state.qi[t]+=e.target.checked?1:-1; updateBadges();});});
-    document.querySelectorAll('.x-flag').forEach(el=>{el.addEventListener('change', e=>{const t=e.target.dataset.type; state.xue[t]+=e.target.checked?1:-1; updateBadges();});});
-    document.querySelectorAll('.s-flag').forEach(el=>{el.addEventListener('change', e=>{const t=e.target.dataset.type; state.sui[t]+=e.target.checked?1:-1; updateBadges();});});
-    updateBadges();
-  }
-  function syncHidden(){ updateBadges(); }
-  attachHandlers();
-</script>
+    {% endfor %}
+    <button class="btn" type="submit">判定</button>
+  </form>
+  <p><a href="/admin">一覧へ</a></p>
 </body>
 </html>

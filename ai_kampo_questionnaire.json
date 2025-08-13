@@ -1,0 +1,264 @@
+{
+  "version": "1.0",
+  "title": "AI漢方相談 問診票",
+  "description": "八綱分類＋気血水＋主訴に基づいて証を推定し、漢方薬候補を提案するための問診データ",
+  "sections": [
+    {
+      "id": "basic_info",
+      "title": "基本情報",
+      "questions": [
+        {
+          "id": "name",
+          "text": "氏名",
+          "type": "text"
+        },
+        {
+          "id": "age",
+          "text": "年齢",
+          "type": "number"
+        },
+        {
+          "id": "gender",
+          "text": "性別",
+          "type": "choice",
+          "options": [
+            "男性",
+            "女性",
+            "その他"
+          ]
+        },
+        {
+          "id": "chief_complaint",
+          "text": "主訴（今一番つらい症状）",
+          "type": "text"
+        },
+        {
+          "id": "onset",
+          "text": "発症時期と経過",
+          "type": "choice",
+          "options": [
+            "急性",
+            "慢性"
+          ]
+        },
+        {
+          "id": "region",
+          "text": "地域",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "hakkou",
+      "title": "八綱分類",
+      "questions": [
+        {
+          "id": "cold_heat",
+          "text": "最近の体温感覚は？",
+          "type": "choice",
+          "options": [
+            "冷えやすい",
+            "暑がり・ほてる",
+            "変化なし"
+          ]
+        },
+        {
+          "id": "kyo_jitsu",
+          "text": "体力や症状の強さは？",
+          "type": "choice",
+          "options": [
+            "疲れやすく弱い（虚証）",
+            "症状が強い（実証）",
+            "中間"
+          ]
+        },
+        {
+          "id": "hyou_ri",
+          "text": "症状の範囲は？",
+          "type": "choice",
+          "options": [
+            "外側（皮膚・粘膜）",
+            "内側（内臓など）"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ki_ketsu_sui",
+      "title": "気血水の状態",
+      "questions": [
+        {
+          "id": "ki_deficiency",
+          "text": "疲れやすい・息切れ・声が弱い",
+          "type": "boolean"
+        },
+        {
+          "id": "ki_stagnation",
+          "text": "イライラ・胸のつかえ・ため息が多い",
+          "type": "boolean"
+        },
+        {
+          "id": "blood_color",
+          "text": "顔色",
+          "type": "choice",
+          "options": [
+            "赤い",
+            "青白い",
+            "暗い"
+          ]
+        },
+        {
+          "id": "lip_nail_color",
+          "text": "唇や爪の色",
+          "type": "choice",
+          "options": [
+            "淡い",
+            "紫っぽい",
+            "変化なし"
+          ]
+        },
+        {
+          "id": "menstrual_info",
+          "text": "月経の状態（女性のみ）",
+          "type": "text"
+        },
+        {
+          "id": "water_retention",
+          "text": "むくみ・痰・下痢など",
+          "type": "boolean"
+        }
+      ]
+    },
+    {
+      "id": "tongue",
+      "title": "舌診",
+      "questions": [
+        {
+          "id": "tongue_color",
+          "text": "舌の色",
+          "type": "choice",
+          "options": [
+            "淡紅",
+            "赤",
+            "暗赤",
+            "紫"
+          ]
+        },
+        {
+          "id": "tongue_coating",
+          "text": "舌苔",
+          "type": "choice",
+          "options": [
+            "白",
+            "黄色",
+            "厚い",
+            "薄い",
+            "なし"
+          ]
+        },
+        {
+          "id": "tongue_shape",
+          "text": "舌の形",
+          "type": "choice",
+          "options": [
+            "腫れぼったい",
+            "細い",
+            "歯痕あり",
+            "亀裂あり"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pulse",
+      "title": "脈診",
+      "questions": [
+        {
+          "id": "pulse_quality",
+          "text": "脈の質",
+          "type": "choice",
+          "options": [
+            "弦脈",
+            "滑脈",
+            "細脈",
+            "速い",
+            "遅い",
+            "弱い",
+            "強い"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "face",
+      "title": "顔色",
+      "questions": [
+        {
+          "id": "face_color",
+          "text": "顔の状態",
+          "type": "choice",
+          "options": [
+            "赤みが強い",
+            "青白い",
+            "暗い・くすんでいる",
+            "むくんでいる",
+            "変化なし"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "other_symptoms",
+      "title": "その他重要症状",
+      "questions": [
+        {
+          "id": "sleep",
+          "text": "睡眠の状態",
+          "type": "choice",
+          "options": [
+            "入眠困難",
+            "中途覚醒",
+            "早朝覚醒",
+            "普通"
+          ]
+        },
+        {
+          "id": "appetite",
+          "text": "食欲",
+          "type": "choice",
+          "options": [
+            "低下",
+            "亢進",
+            "普通"
+          ]
+        },
+        {
+          "id": "bowel",
+          "text": "排便",
+          "type": "choice",
+          "options": [
+            "便秘",
+            "下痢",
+            "普通"
+          ]
+        },
+        {
+          "id": "sweating",
+          "text": "発汗",
+          "type": "choice",
+          "options": [
+            "多い",
+            "少ない",
+            "異常なし"
+          ]
+        },
+        {
+          "id": "pain",
+          "text": "痛みの有無（部位・性質）",
+          "type": "text"
+        }
+      ]
+    }
+  ],
+  "ai_instructions": "全回答をもとに八綱分類＋気血水＋症状を解析し、証を決定。漢方薬候補3種類と選定理由、日常生活アドバイスを出力すること。"
+}

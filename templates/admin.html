@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="ja">
 <head>
@@ -5,27 +6,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>記録一覧</title>
 <style>
-  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
   table{border-collapse:collapse;width:100%}
-  th,td{border:1px solid #ddd;padding:8px}
-  th{background:#f2f2f2}
-  code{background:#f6f6f6;padding:2px 4px}
+  th,td{border:1px solid #eee;padding:8px;vertical-align:top}
 </style>
 </head>
 <body>
-<h1>記録一覧（最新200件）</h1>
-<table>
-  <tr><th>ID</th><th>日時</th><th>氏名</th><th>主訴</th><th>詳細</th></tr>
-  {% for item in items %}
-  <tr>
-    <td><code>{{ item.id }}</code></td>
-    <td>{{ item.submitted_at }}</td>
-    <td>{{ item.name }}</td>
-    <td>{{ item.chief }}</td>
-    <td><a href="/record/{{ item.id }}">開く</a></td>
-  </tr>
-  {% endfor %}
-</table>
-<p><a href="/">新規登録</a></p>
+  <h2>記録一覧</h2>
+  <table>
+    <tr><th>受理</th><th>氏名</th><th>主訴</th><th>推奨方剤</th><th>操作</th></tr>
+    {% for it in items %}
+      <tr>
+        <td>{{ it.submitted_at }}</td>
+        <td>{{ it.patient.name }}</td>
+        <td>{{ it.patient.chief_complaint }}</td>
+        <td>{{ it.ai_assessment.chosen }}</td>
+        <td><a href="/record/{{ it.id }}">詳細</a></td>
+      </tr>
+    {% endfor %}
+  </table>
+  <p><a href="/">新規登録へ</a></p>
 </body>
 </html>

@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>記録詳細</title>
+<title>記録詳細 v14</title>
 <style>
   body{font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP",sans-serif;margin:16px;line-height:1.6}
   .block{border:1px solid #ddd;border-radius:10px;padding:16px;margin:16px 0;background:#fff}
@@ -37,12 +37,11 @@
       <tr>
         <td>
           <div style="font-weight:600">{{ loop.index }}位：{{ c.name }}</div>
-          <div class="mono">score: {{ c.score }}</div>
+          {% if c.score %}<div class="mono">score: {{ c.score }}</div>{% endif %}
         </td>
         <td>
-          {% if c.pharmacist_tip %}<div class="mono">薬剤師メモ：{{ c.pharmacist_tip }}</div>{% endif %}
-          {% if c.ai_reason %}<div>AI理由：{{ c.ai_reason }}</div>{% endif %}
-          {% if c.script and c.script.explain %}<div>患者向け説明：{{ c.script.explain }}</div>{% endif %}
+          {% if c.reason %}<div>AI理由：{{ c.reason }}</div>{% endif %}
+          {% if c.patient_explain %}<div>患者向け説明：{{ c.patient_explain }}</div>{% endif %}
           {% if c.lifestyle %}
             <div>生活：<div class="chips">{% for x in c.lifestyle %}<span>{{ x }}</span>{% endfor %}</div></div>
           {% endif %}
@@ -61,35 +60,16 @@
   </table>
 
   <h2>推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
-  <div class="mono">選定理由：{{ pre.reasons|default('', true) }}</div>
-  <div class="mono">{{ pre.chief_note }}</div>
+  {% if pre.patient_summary %}<div class="mono">{{ pre.patient_summary }}</div>{% endif %}
 </div>
 
 <div class="block">
-  <h3>主訴に直結するアドバイス</h3>
-  {% if pre.complaint_sections %}
-    {% for sec in pre.complaint_sections %}
-      <h4>{{ sec.title }}</h4>
-      <ul>
-        {% if sec.background %}<li><b>背景/考え方：</b> {{ sec.background }}</li>{% endif %}
-        {% if sec.do %}<li><b>まず試す：</b> {{ sec.do|join("、 ") }}</li>{% endif %}
-        {% if sec.foods_good %}<li><b>良い食材：</b> {{ sec.foods_good|join("・") }}</li>{% endif %}
-        {% if sec.avoid %}<li><b>避けたい：</b> {{ sec.avoid|join("、 ") }}</li>{% endif %}
-        {% if sec.foods_avoid %}<li><b>避けたい食材：</b> {{ sec.foods_avoid|join("・") }}</li>{% endif %}
-        {% if sec.points %}<li><b>生活のポイント：</b> {{ sec.points|join(" / ") }}</li>{% endif %}
-        {% if sec.acupoints %}<li><b>ツボ：</b> {{ sec.acupoints|join("・") }}</li>{% endif %}
-        {% if sec.danger %}<li><b>受診の目安：</b> {{ sec.danger|join(" / ") }}</li>{% endif %}
-      </ul>
-      <hr>
-    {% endfor %}
+  <h3>注意・受診の目安</h3>
+  {% if pre.red_flags %}
+    <ul>{% for rf in pre.red_flags %}<li>{{ rf }}</li>{% endfor %}</ul>
   {% else %}
-    <div>主訴の具体性が不足しているため、一般的なアドバイスを表示しています。</div>
+    <div>（特記なし）</div>
   {% endif %}
-</div>
-
-<div class="block">
-  <h3>体質の説明（お客様向け）</h3>
-  <p>{{ pre.patient_summary if pre.patient_summary else pre.constitution }}</p>
 </div>
 
 <div class="block">
