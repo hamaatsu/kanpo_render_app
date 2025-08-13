@@ -17,28 +17,61 @@ QUESTIONNAIRE_PATH = APP_DIR / "ai_kampo_questionnaire.json"
 with QUESTIONNAIRE_PATH.open("r", encoding="utf-8") as f:
     QUESTIONNAIRE = json.load(f)
 
+# 主訴ドメイン定義
+COMPLAINT_MAP = json.loads((APP_DIR/"complaint_map.json").read_text(encoding="utf-8"))
+
 app = Flask(__name__)
 
 
+def complaint_rerank(assessment: dict, form: dict) -> dict:
+    """主訴ドメインに対応した候補を少なくとも1つ含め、スコアを補正して順序を主訴ファーストに寄せる。"""
+    prof = build_complaint_profile(form.get("chief_complaint",""))
+    dom = prof.get("domain","general")
+    mapping = COMPLAINT_MAP.get(dom, {})
+    prefer = mapping.get("prefer", [])
+    if not assessment: 
+        return assessment
+    cands = assessment.get("candidates") or []
+    # 強い加点
+    boosted = []
+    seen = set()
+    for c in cands:
+        s = float(c.get("score", 0))
+        if c.get("name") in prefer:
+            s += 6.0  # 主訴適合の強いブースト
+            c["ai_reason"] = (c.get("ai_reason") or "") + "（主訴に直接対応）"
+        boosted.append((s, c))
+        seen.add(c.get("name"))
+    # 必須処方が1つも入っていなければ、候補の先頭に1つ追加
+    if prefer and all(name not in seen for name in prefer):
+        # 代表処方を差し込む
+        ins = {"name": prefer[0], "score": 6.0, "pharmacist_tip": "主訴に直接対応する処方。", 
+               "script": {"explain": ""}, "lifestyle": [], "foods_good": [], "foods_avoid": [], "counsel_points": [], "ai_reason": "主訴に基づく優先候補"}
+        boosted.append((6.0, ins))
+    boosted.sort(key=lambda x: x[0], reverse=True)
+    cands2 = [c for _, c in boosted][:3]
+    assessment["candidates"] = cands2
+    if cands2:
+        assessment["chosen"] = cands2[0]["name"]
+    # 皮膚領域などの場合は薬膳・生活のデフォルトも上書き補助
+    if dom == "dermatology":
+        diet = list({*assessment.get("diet", []), *mapping.get("diet", [])})
+        avoid = mapping.get("avoid", [])
+        ls = list({*assessment.get("lifestyle", []), "辛味・油の摂り過ぎを控える", "十分な睡眠", "肌への強い刺激を避ける"})
+        assessment["diet"] = diet + (["（控える）"] + avoid if avoid else [])
+        assessment["chief_note"] = "主訴（皮膚症状）を最優先に再ランクしました。"
+    return assessment
+
+
 def build_complaint_profile(text: str) -> dict:
-    """非常に簡易な主訴プロファイル。LLMへの手がかりとして渡す(順位操作はしない)。"""
-    t = (text or "").lower()
+    """主訴テキストから COMPLAINT_MAP を使ってドメイン推定。"""
+    t = (text or "")
     prof = {"domain":"general","tags":[]}
-    skin_kw = ["にきび","ﾆｷﾋﾞ","吹き出物","発疹","ブツブツ","赤み","湿疹","痒み","かゆみ","蕁麻疹","皮膚","顔"]
-    pain_kw = ["痛み","肩こり","頭痛","腰痛","こり"]
-    gi_kw = ["胃","腹","便秘","下痢","胃もたれ","吐き気","食欲"]
-    resp_kw = ["咳","痰","鼻","花粉","くしゃみ"]
-    gyn_kw = ["月経","生理","更年期","PMS"]
-    if any(k in t for k in skin_kw):
-        prof["domain"]="dermatology"; prof["tags"]+=["皮膚","清熱/解毒","利湿","炎症コントロール"]
-    elif any(k in t for k in pain_kw):
-        prof["domain"]="pain"; prof["tags"]+=["気滞/瘀血","筋緊張"]
-    elif any(k in t for k in gi_kw):
-        prof["domain"]="gi"; prof["tags"]+=["脾胃","気虚/痰湿"]
-    elif any(k in t for k in resp_kw):
-        prof["domain"]="resp"; prof["tags"]+=["肺","風/熱/痰"]
-    elif any(k in t for k in gyn_kw):
-        prof["domain"]="gyn"; prof["tags"]+=["血/肝","寒熱/瘀血"]
+    for dom, spec in COMPLAINT_MAP.items():
+        if any(kw in t for kw in spec.get("keywords", [])):
+            prof["domain"] = dom
+            prof["tags"] = spec.get("tags", [])
+            break
     return prof
 
 
@@ -104,9 +137,13 @@ def simple_assess(form: Dict[str, Any]) -> Dict[str, Any]:
             "foods_good": ["ねぎ","しょうが","玉ねぎ"],
             "foods_avoid": ["冷たい飲料","甘味過多"],
             "counsel_points": ["痛みの質・時間帯","冷え/天候での増悪"]
-        })
+        }
+    
+    # 主訴ファーストの微調整
+    ass = complaint_rerank(ass, form)
+    return ass)
     patient_summary = f"体のバランスとしては『{kyo}・{heat}』傾向で、気血水では『{qi}/{xue}/{sui}』が示唆されます。主訴との関連を踏まえ、巡りを整える方針で提案しています。"
-    return {
+    ass = {
         "chosen": cands[0]["name"] if cands else "",
         "candidates": cands,
         "axes": {"jitsu_kyo": kyo, "kan_netsu": heat, "hyo_ri": form.get('hyou_ri','')},
@@ -125,7 +162,11 @@ def simple_assess(form: Dict[str, Any]) -> Dict[str, Any]:
             "points":["長時間の同一姿勢を避ける","湯船で温める"],
             "acupoints":["肩井","風池","合谷"],
             "danger":["片側の脱力/しびれが出たら受診"]
-        }]
+        }
+    
+    # 主訴ファーストの微調整
+    ass = complaint_rerank(ass, form)
+    return ass]
     }
 
 def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
@@ -169,7 +210,11 @@ def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
                 "foods_avoid": it.get("foods_avoid", []),
                 "counsel_points": it.get("counsel_points", []),
                 "ai_reason": it.get("reason","")
-            })
+            }
+    
+    # 主訴ファーストの微調整
+    ass = complaint_rerank(ass, form)
+    return ass)
         assessment = {
             "chosen": (cands[0]["name"] if cands else ""),
             "candidates": cands,
@@ -183,6 +228,10 @@ def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
             "complaint_sections": parsed.get("complaint_sections", []),
             "llm_raw": parsed
         }
+    
+    # 主訴ファーストの微調整
+    ass = complaint_rerank(ass, form)
+    return ass
         # remove pregnancy warnings for non-female
         if (sex or "").lower() not in ["female","woman","女性","女"]:
             def _strip_preg(text: str) -> str:
@@ -192,6 +241,7 @@ def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
             for c in assessment["candidates"]:
                 if isinstance(c.get("script"), dict):
                     c["script"]["watch"] = _strip_preg(c["script"].get("watch",""))
+        assessment = complaint_rerank(assessment, form)
         return assessment
     except Exception as e:
         # Fallback on any error
@@ -227,7 +277,11 @@ def submit():
             "sex": data.get("gender",""),
             "region": data.get("region",""),
             "chief_complaint": data.get("chief_complaint",""),
-        },
+        }
+    
+    # 主訴ファーストの微調整
+    ass = complaint_rerank(ass, form)
+    return ass,
         "ai_assessment": assessment,
         "raw": data
     }
