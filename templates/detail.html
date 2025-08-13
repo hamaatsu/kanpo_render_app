@@ -1,53 +1,13 @@
-<!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>記録詳細</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
-<body>
-<header class="app-header"><div class="container"><h1>AI漢方相談</h1>
-<nav><a href="/admin">一覧</a> <a href="/">新規登録</a></nav></div></header>
-
-<main class="container">
-  <h2>記録詳細</h2>
-  <div class="mono">レコードID: {{ data.id }}　/　受理: {{ data.submitted_at }}</div>
-
-  <section class="card">
-    <h3>患者情報</h3>
-    <div>氏名: {{ data.patient.name }}　/　年齢: {{ data.patient.age }}　/　性別: {{ data.patient.sex }}　/　地域: {{ data.patient.region }}</div>
-    <div>主訴: <b>{{ data.patient.chief_complaint }}</b></div>
-  </section>
-
-  <section class="card">
-    <h3>判定結果（要約）</h3>
-    {% set pre = data.assessment %}
-    <h2 class="highlight">推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
-    {% if pre.chief_note %}<div class="mono">{{ pre.chief_note }}</div>{% endif %}
-  </section>
-
-  <section class="card">
-    <h3>候補（Top3）</h3>
-    {% if pre.candidates %}
-      <ol>
-        {% for c in pre.candidates %}
-        <li><b>{{ c.name }}</b>（スコア: {{ c.score }}）{% if c.ai_reason %}<div class="mono">{{ c.ai_reason }}</div>{% endif %}</li>
-        {% endfor %}
-      </ol>
-    {% else %}
-      <div class="muted">（候補なし）</div>
-    {% endif %}
-  </section>
-
-  <section class="card">
-    <h3>食事・生活アドバイス</h3>
-    <div class="grid-2">
-      <div><h4>おすすめ</h4>{% if pre.foods_good %}<ul class="tight">{% for x in pre.foods_good %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<div class="muted">（なし）</div>{% endif %}</div>
-      <div><h4>控えたい</h4>{% if pre.foods_avoid %}<ul class="tight">{% for x in pre.foods_avoid %}<li>{{ x }}</li>{% endfor %}</ul>{% else %}<div class="muted">（なし）</div>{% endif %}</div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h3>会話のきっかけ（話題ネタ）</h3>
-    {% if pre.topics %}<ul class="tight">{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>{% else %}<div class="muted">（特記なし）</div>{% endif %}
-  </section>
-</main>
-
-<footer class="app-footer"><div class="container small muted">© AI漢方相談</div></footer>
+<html><body>
+<h1>{{ record.patient.get('name') }} さんの結果</h1>
+<p>主訴: {{ record.patient.get('symptoms') }}</p>
+<h2>Top3 漢方薬</h2>
+<ul>
+{% for item in record.top3 %}
+<li>{{ item }}</li>
+{% endfor %}
+</ul>
+<h2>日常生活アドバイス</h2>
+<p>{{ record.advice }}</p>
+<a href="{{ url_for('index') }}">戻る</a>
 </body></html>
