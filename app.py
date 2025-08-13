@@ -5,6 +5,57 @@ from pathlib import Path
 from typing import Any, Dict, List
 from flask import Flask, render_template, request, redirect, url_for, abort
 
+def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return {"error": "OPENAI_API_KEY is not set. This app requires an API key for full AI-driven assessment."}
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+
+        sys_prompt = (
+            "あなたは漢方薬局のベテラン薬剤師です。"
+            "入力の問診（主訴、八綱、気血水、舌・脈・顔色、生活）を総合して証を推定し、"
+            "Top3の漢方薬候補を選定してください。"
+            "各候補には『主訴との関係』を1行で明記し、患者向け説明（3〜6文）、"
+            "薬膳（推奨/控え）、生活アドバイス、面談で深掘りすべきポイント、"
+            "受診目安（赤旗）を含めてください。"
+            "必ずTop3のうち最低1つは主訴に直接対応する処方にしてください。"
+            "男性には妊娠関連の注意は出さないでください。"
+            "出力は必ずJSON（candidates[], chosen, axes, qxs, patient_summary, complaint_sections, diet, lifestyle 等）。"
+        )
+
+        model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+        resp = client.chat.completions.create(
+            model=model, temperature=0.2,
+            messages=[
+                {"role":"system","content": sys_prompt},
+                {"role":"user","content": json.dumps({"form": form}, ensure_ascii=False)}
+            ]
+        )
+        content = resp.choices[0].message.content
+
+        # JSONとしてパース（壊れていたらそのまま返す）
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            parsed = {"llm_text": content}
+
+        # 性別に応じて妊娠文言の安全除去（念のため）
+        sex = str(form.get("gender","")).lower()
+        if sex not in ["female","woman","女性","女"]:
+            import re as _re
+            def _strip_preg(s: str) -> str:
+                return _re.sub(r"妊娠中[^。]*。?", "", s or "")
+            parsed["patient_summary"] = _strip_preg(parsed.get("patient_summary",""))
+            for c in parsed.get("candidates", []):
+                if isinstance(c.get("patient_explain",""), str):
+                    c["patient_explain"] = _strip_preg(c.get("patient_explain",""))
+
+        return parsed
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
 APP_DIR = Path(__file__).resolve().parent
 DATA_ROOT = Path(os.getenv("DATA_ROOT", "/tmp/kanpo_ai"))
 UPLOAD_DIR = DATA_ROOT / "uploads"
@@ -387,10 +438,7 @@ def submit():
             else:
                 data[q["id"]] = val
     rec_id = str(uuid.uuid4())
-    sex = data.get("gender","")
-    pool = build_candidate_pool_from_complaint(data.get("chief_complaint",""))
-    assessment = stage2_llm_selection(data, pool, sex)
-    assessment = complaint_rerank(assessment, data)
+    assessment = llm_assess_full(data)
 
     record = {
         "id": rec_id,
