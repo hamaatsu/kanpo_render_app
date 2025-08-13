@@ -19,6 +19,29 @@ with QUESTIONNAIRE_PATH.open("r", encoding="utf-8") as f:
 
 app = Flask(__name__)
 
+
+def build_complaint_profile(text: str) -> dict:
+    """非常に簡易な主訴プロファイル。LLMへの手がかりとして渡す(順位操作はしない)。"""
+    t = (text or "").lower()
+    prof = {"domain":"general","tags":[]}
+    skin_kw = ["にきび","ﾆｷﾋﾞ","吹き出物","発疹","ブツブツ","赤み","湿疹","痒み","かゆみ","蕁麻疹","皮膚","顔"]
+    pain_kw = ["痛み","肩こり","頭痛","腰痛","こり"]
+    gi_kw = ["胃","腹","便秘","下痢","胃もたれ","吐き気","食欲"]
+    resp_kw = ["咳","痰","鼻","花粉","くしゃみ"]
+    gyn_kw = ["月経","生理","更年期","PMS"]
+    if any(k in t for k in skin_kw):
+        prof["domain"]="dermatology"; prof["tags"]+=["皮膚","清熱/解毒","利湿","炎症コントロール"]
+    elif any(k in t for k in pain_kw):
+        prof["domain"]="pain"; prof["tags"]+=["気滞/瘀血","筋緊張"]
+    elif any(k in t for k in gi_kw):
+        prof["domain"]="gi"; prof["tags"]+=["脾胃","気虚/痰湿"]
+    elif any(k in t for k in resp_kw):
+        prof["domain"]="resp"; prof["tags"]+=["肺","風/熱/痰"]
+    elif any(k in t for k in gyn_kw):
+        prof["domain"]="gyn"; prof["tags"]+=["血/肝","寒熱/瘀血"]
+    return prof
+
+
 def now_iso() -> str:
     return dt.datetime.utcnow().isoformat() + "Z"
 
@@ -114,13 +137,14 @@ def call_openai(form: Dict[str, Any], sex: str) -> Dict[str, Any]:
         client = OpenAI(api_key=api_key)
         sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
-            "以下の問診（八綱：寒熱・虚実・表裏、気血水、舌・脈・顔色、主訴、生活）を総合し、"
-            "証を決定し、漢方薬Top3、各理由、患者向け説明（3〜6文）、薬膳（推奨/控え）、生活、面談深掘り、赤旗（受診目安）をJSONで返してください。"
+            "【最重要】主訴（chief_complaint）を最優先に評価し、必ず候補Top3のうち最低1つは主訴に直接対応する処方を含めてください。"
+            "問診（八綱：寒熱・虚実・表裏、気血水、舌・脈・顔色、主訴、生活）を総合し、証を決定してください。"
+            "出力は JSON。各候補には『主訴との関係』を明記。患者向け説明は3〜6文、平易な日本語で。薬膳（推奨/控え）、生活、面談深掘り、赤旗（受診目安）も含める。"
             "男性には妊娠関連の注意は出さないでください。"
-            "出力は必ずJSONで、例: {\"candidates\":[{\"name\":\"葛根湯\",\"reason\":\"...\"}],\"patient_summary\":\"...\",\"advice\":{}}"
         )
-        user = {"form": form}
+        user = {"form": form, "complaint_profile": build_complaint_profile(form.get("chief_complaint",""))}
         model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+        # ヒント: 皮膚症状（domain=dermatology）の場合は、清上防風湯/十味敗毒湯/消風散/黄連解毒湯/荊芥連翹湯/温清飲などから臨床像に合うものを最低1つ含めてください。
         resp = client.chat.completions.create(
             model=model, temperature=0.3,
             messages=[{"role":"system","content":sys_prompt},
