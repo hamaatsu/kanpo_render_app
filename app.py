@@ -19,6 +19,125 @@ COMPLAINT_MAP = json.loads((APP_DIR/"complaint_map.json").read_text(encoding="ut
 
 app = Flask(__name__)
 
+
+# --- Constitution extraction (very simple heuristic for weighting) ---
+def infer_constitution(form: Dict[str, Any]) -> Dict[str, bool]:
+    """Infer constitution flags from questionnaire for weighting stage."""
+    flags = {
+        "qi_def": bool(form.get("ki_deficiency")),
+        "qi_stag": bool(form.get("ki_stagnation")),
+        "xue_def": bool(form.get("blood_def")),
+        "yu_xue": bool(form.get("yu_xue")),
+        "sui_ret": bool(form.get("sui_ret")),
+        "heat": str(form.get("cold_heat","")).startswith("暑") or "ほて" in str(form.get("cold_heat","")),
+        "cold": str(form.get("cold_heat","")).startswith("冷"),
+        "weak": str(form.get("kyo_jitsu","")).startswith("虚"),
+        "strong": str(form.get("kyo_jitsu","")).startswith("実")
+    }
+    return flags
+
+def build_candidate_pool_from_complaint(text: str) -> list:
+    """Stage-1: from chief complaint, build a candidate pool of formulas (unique, up to ~8)."""
+    t = text or ""
+    pool = []
+    seen = set()
+    for dom, spec in COMPLAINT_MAP.items():
+        if any(kw in t for kw in spec.get("keywords", [])):
+            for f in spec.get("prefer", []):
+                if f not in seen:
+                    pool.append({"name": f, "source_domain": dom})
+                    seen.add(f)
+    # If nothing matched, provide a broad default pool
+    if not pool:
+        defaults = ["補中益気湯","六君子湯","桂枝茯苓丸","葛根湯","荊芥連翹湯","清上防風湯","平胃散","半夏瀉心湯"]
+        for f in defaults:
+            if f not in seen:
+                pool.append({"name": f, "source_domain": "general"})
+                seen.add(f)
+    return pool[:8]
+
+def stage2_llm_selection(form: Dict[str, Any], pool: list, sex: str) -> Dict[str, Any]:
+    """Stage-2: Ask LLM to select Top3 from given pool, weighting by constitution and full context."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        # fallback: simple rank by rough constitution tags
+        ass = simple_assess(form)
+        # restrict to pool names if possible
+        names = [p["name"] for p in pool]
+        cands = [c for c in ass.get("candidates", []) if c.get("name") in names]
+        if cands:
+            ass["candidates"] = cands[:3]
+            ass["chosen"] = cands[0]["name"]
+        return ass
+
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    sys_prompt = (
+        "あなたは漢方薬局のベテラン薬剤師です。"
+        "【二段階選定】ステージ1で主訴から抽出された候補群（allowed_candidates）から、"
+        "ステージ2として体質／随伴所見（八綱・気血水・舌・脈・生活）を加味してTop3を選定してください。"
+        "候補は原則として allowed_candidates から選びます（どうしても不適なら最大1つまで補う）。"
+        "Top3のうち最低1つ（できれば2つ）は主訴に直接対応する処方にしてください。"
+        "各候補には『主訴との関係』を1行で明記し、患者向け説明の1文目で主訴に必ず触れてください。"
+        "出力は必ずJSON（candidates[], chosen, axes, qxs, patient_summary, complaint_sections, diet, lifestyle 等）。"
+        "男性には妊娠関連の注意は出さないでください。"
+    )
+    payload = {
+        "form": form,
+        "allowed_candidates": pool,
+        "complaint_profile": build_complaint_profile(form.get("chief_complaint","")),
+        "constitution_flags": infer_constitution(form)
+    }
+    model = os.getenv("OPENAI_MODEL","gpt-4o-mini")
+    resp = client.chat.completions.create(
+        model=model, temperature=0.2,
+        messages=[{"role":"system","content":sys_prompt},
+                  {"role":"user","content":json.dumps(payload, ensure_ascii=False)}]
+    )
+    content = resp.choices[0].message.content
+    try:
+        parsed = json.loads(content)
+    except Exception:
+        parsed = {"llm_text": content}
+    # normalize
+    cands = []
+    for it in (parsed.get("candidates") or []):
+        cands.append({
+            "name": it.get("name",""),
+            "score": it.get("score", 1.0),
+            "pharmacist_tip": it.get("pharmacist_tip",""),
+            "script": {"explain": it.get("patient_explain",""), "watch": it.get("watch","")},
+            "lifestyle": it.get("lifestyle", []),
+            "foods_good": it.get("foods_good", []),
+            "foods_avoid": it.get("foods_avoid", []),
+            "counsel_points": it.get("counsel_points", []),
+            "ai_reason": it.get("reason","")
+        })
+    assessment = {
+        "chosen": (cands[0]["name"] if cands else ""),
+        "candidates": cands,
+        "axes": parsed.get("axes", {}),
+        "qxs": parsed.get("qxs", {}),
+        "patient_summary": parsed.get("patient_summary",""),
+        "chief_note": parsed.get("chief_note",""),
+        "diet": parsed.get("diet", []),
+        "lifestyle": parsed.get("lifestyle", []),
+        "topics": parsed.get("topics", []),
+        "complaint_sections": parsed.get("complaint_sections", []),
+        "llm_raw": parsed
+    }
+    # remove pregnancy warnings for non-female
+    if (sex or "").lower() not in ["female","woman","女性","女"]:
+        def _strip_preg(text: str) -> str:
+            import re as _re
+            return _re.sub(r"妊娠中[^。]*。?", "", text or "")
+        assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary",""))
+        for c in assessment["candidates"]:
+            if isinstance(c.get("script"), dict):
+                c["script"]["watch"] = _strip_preg(c["script"].get("watch",""))
+    return assessment
+
+
 def now_iso() -> str:
     return dt.datetime.utcnow().isoformat() + "Z"
 
@@ -273,7 +392,9 @@ def submit():
                 data[q["id"]] = val
     rec_id = str(uuid.uuid4())
     sex = data.get("gender","")
-    assessment = call_openai(data, sex)
+    pool = build_candidate_pool_from_complaint(data.get("chief_complaint",""))
+    assessment = stage2_llm_selection(data, pool, sex)
+    assessment = complaint_rerank(assessment, data)
 
     record = {
         "id": rec_id,
