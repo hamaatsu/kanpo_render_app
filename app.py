@@ -435,3 +435,23 @@ def simple_assess_with_pool(form: Dict[str, Any], pool: list) -> Dict[str, Any]:
         ass['candidates'] = cands[:3]
         ass['chosen'] = cands[0]['name']
     return ass
+
+
+
+def select_kampo_by_three_steps(main_complaint, additional_info):
+    # Step 1: 主訴から候補を抽出
+    candidates = complaint_map.get(main_complaint, [])
+    
+    # Step 2: 八綱分類・気血水・舌診などで絞り込み
+    narrowed = [
+        c for c in candidates
+        if all(cond in additional_info.get("pattern", []) for cond in kampo_conditions.get(c, []))
+    ]
+    
+    # Step 3: その他アドバイス（主訴重視）を生成
+    advice = generate_main_complaint_advice(main_complaint, additional_info)
+    
+    return narrowed[:10], advice
+
+def generate_main_complaint_advice(main_complaint, additional_info):
+    return f"{main_complaint} に対する生活習慣や食事のアドバイスを提示します。"
