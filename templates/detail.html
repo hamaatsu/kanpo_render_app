@@ -1,0 +1,13 @@
+<html><body>
+<h1>{{ record.patient.get('name') }} さんの結果</h1>
+<p>主訴: {{ record.patient.get('symptoms') }}</p>
+<h2>Top3 漢方薬</h2>
+<ul>
+{% for item in record.top3 %}
+<li>{{ item }}</li>
+{% endfor %}
+</ul>
+<h2>日常生活アドバイス</h2>
+<p>{{ record.advice }}</p>
+<a href="{{ url_for('index') }}">戻る</a>
+</body></html>

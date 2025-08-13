@@ -1,0 +1,9 @@
+<html><body>
+<h1>記録一覧</h1>
+<ul>
+{% for record in records %}
+  <li><a href="{{ url_for('detail', record_id=loop.index0) }}">{{ record.patient.get('name', '') }}</a></li>
+{% endfor %}
+</ul>
+<a href="{{ url_for('new') }}">新規問診</a>
+</body></html>
