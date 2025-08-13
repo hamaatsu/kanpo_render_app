@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>記録詳細</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body>
+<header class="app-header"><div class="container"><h1>AI漢方相談</h1>
+<nav><a href="/admin">一覧</a><a href="/">新規登録</a></nav></div></header>
+
+<main class="container">
+  <h2>記録詳細</h2>
+  <div class="mono">レコードID: {{ data.id }}　/　受理: {{ data.submitted_at }}</div>
+
+  <section class="card">
+    <h3>患者情報</h3>
+    <div>氏名: {{ data.patient.name }}　/　年齢: {{ data.patient.age }}　/　性別: {{ data.patient.sex }}　/　地域: {{ data.patient.region }}</div>
+    <div>主訴: <b>{{ data.patient.chief_complaint }}</b></div>
+  </section>
+
+  {% set pre = data.ai_assessment %}
+
+  <!-- ① 方剤候補（薬剤情報に限定） -->
+  <section class="card">
+    <h3>AI提案（最終判断は薬剤師）</h3>
+    <h4>方剤候補（上位3）</h4>
+    <table class="table">
+      <tr><th style="width:14rem">方剤</th><th>薬剤師メモ</th><th>AI理由</th><th>患者向け説明</th></tr>
+      {% for c in pre.candidates %}
+      <tr>
+        <td>
+          <div class="rank">{{ loop.index }}位：<strong>{{ c.name }}</strong></div>
+          <div class="mono">score: {{ c.score }}</div>
+        </td>
+        <td class="mono">{{ c.pharmacist_tip }}</td>
+        <td>{{ c.ai_reason }}</td>
+        <td>{{ c.script.explain if c.script }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <h2 class="highlight">推奨方剤：<strong>{{ pre.chosen }}</strong></h2>
+    {% if pre.chief_note %}<div class="mono">{{ pre.chief_note }}</div>{% endif %}
+  </section>
+
+  <!-- ② 主訴に直結するアドバイス -->
+  <section class="card">
+    <h3>主訴に直結するアドバイス</h3>
+    {% if pre.complaint_sections %}
+      {% for sec in pre.complaint_sections %}
+      <div class="subcard">
+        <h4>{{ sec.title }}</h4>
+        <ul>
+          {% if sec.background %}<li><b>背景/考え方：</b> {{ sec.background }}</li>{% endif %}
+          {% if sec.do %}<li><b>まず試す：</b> {{ sec.do|join("、 ") }}</li>{% endif %}
+          {% if sec.foods_good %}<li><b>良い食材：</b> {{ sec.foods_good|join("・") }}</li>{% endif %}
+          {% if sec.foods_avoid %}<li><b>避けたい食材：</b> {{ sec.foods_avoid|join("・") }}</li>{% endif %}
+          {% if sec.points %}<li><b>生活のポイント：</b> {{ sec.points|join(" / ") }}</li>{% endif %}
+          {% if sec.acupoints %}<li><b>ツボ：</b> {{ sec.acupoints|join("・") }}</li>{% endif %}
+          {% if sec.danger %}<li><b>受診の目安：</b> {{ sec.danger|join(" / ") }}</li>{% endif %}
+        </ul>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="muted">（主訴に関する特記事項なし）</div>
+    {% endif %}
+  </section>
+
+  <!-- ③ 体質説明 -->
+  <section class="card">
+    <h3>体質の説明（お客様向け）</h3>
+    <p>{{ pre.patient_summary if pre.patient_summary else pre.constitution }}</p>
+  </section>
+
+  <!-- ④ 薬膳・生活（全体） -->
+  <section class="card grid-2">
+    <div>
+      <h3>薬膳食材（全体提案）</h3>
+      {% if pre.diet %}
+        <div class="chips">{% for f in pre.diet %}<span>{{ f }}</span>{% endfor %}</div>
+      {% else %}
+        <div class="muted">（特記なし）</div>
+      {% endif %}
+    </div>
+    <div>
+      <h3>日常生活アドバイス（全体提案）</h3>
+      {% if pre.lifestyle %}
+        <ul class="tight">{% for a in pre.lifestyle %}<li>{{ a }}</li>{% endfor %}</ul>
+      {% else %}
+        <div class="muted">（特記なし）</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <!-- ⑤ 面談のきっかけ -->
+  <section class="card">
+    <h3>会話のきっかけ（話題ネタ）</h3>
+    {% if pre.topics %}
+      <ul class="tight">{% for t in pre.topics %}<li>{{ t }}</li>{% endfor %}</ul>
+    {% else %}
+      <div class="muted">（特記なし）</div>
+    {% endif %}
+  </section>
+
+</main>
+<footer class="app-footer"><div class="container small muted">© AI漢方相談</div></footer>
+</body></html>
