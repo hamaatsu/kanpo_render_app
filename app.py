@@ -161,7 +161,7 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
         resp = client.chat.completions.create(
             model=model,
             temperature=0.2,
-            max_tokens=900,  # 短く速く
+            max_tokens=1400,  # 短く速く
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": sys_prompt},
@@ -183,65 +183,84 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
             else:
                 raw = {"llm_text": content}
 
-        # --- 正規化（テンプレが読む形）
-        cands_norm: List[Dict[str, Any]] = []
-        for it in (raw.get("candidates") or []):
-            cands_norm.append({
-                "name": it.get("name", ""),
-                "score": 1.0,
-                "pharmacist_tip": "",
-                "script": {"explain": it.get("why_fit", ""), "watch": ""},
-                "lifestyle": [],
-                "foods_good": [],
-                "foods_avoid": [],
-                "counsel_points": [],
-                "ai_reason": it.get("why_fit", ""),
-            })
+       # --- 正規化（テンプレが読む形）
+cands_norm: List[Dict[str, Any]] = []
+for it in (raw.get("candidates") or []):
+    cands_norm.append({
+        "name": it.get("name", ""),
+        "score": float(it.get("score", 1.0)),
+        "pharmacist_tip": it.get("pharmacist_tip", ""),
+        "script": {
+            "explain": it.get("patient_explain", ""),
+            "watch": it.get("watch", "")
+        },
+        "lifestyle": it.get("lifestyle", []) or [],
+        "foods_good": it.get("foods_good", []) or [],
+        "foods_avoid": it.get("foods_avoid", []) or [],
+        "counsel_points": it.get("counsel_points", []) or [],
+        "ai_reason": it.get("reason", "")
+    })
 
-        # --- フォールバック（空にならないよう最低1件）
-        if not cands_norm:
-            cands_norm = [{
-                "name": "補中益気湯",
-                "score": 1.0,
-                "pharmacist_tip": "",
-                "script": {"explain": "AI応答が不完全だったため暫定候補を表示しています。最終判断は薬剤師が行います。", "watch": ""},
-                "lifestyle": [], "foods_good": [], "foods_avoid": [], "counsel_points": [],
-                "ai_reason": "暫定候補"
-            }]
+# ===== D) chosen は“候補がある時だけ”決める =====
+chosen = raw.get("chosen", "")
+if not chosen and cands_norm:
+    chosen = cands_norm[0]["name"]
 
-        assessment = {
-            "chosen": (cands_norm[0]["name"] if cands_norm else ""),
-            "candidates": cands_norm,
-            "axes": {"sho": raw.get("sho", "")},
-            "qxs": {},
-            "patient_summary": f"証：{raw.get('sho','')}",
-            "chief_note": raw.get("selection_advice", ""),
-            "diet": raw.get("diet_good", []) or [],
-            "lifestyle": raw.get("lifestyle", []) or [],
-            "topics": [],
-            "complaint_sections": [],
-            "llm_raw": raw,
-        }
+# assessment を組み立て
+assessment = {
+    "chosen": chosen,
+    "candidates": cands_norm,
+    "axes": raw.get("axes", {}),
+    "qxs": raw.get("qxs", {}),
+    "patient_summary": raw.get("patient_summary", ""),
+    "chief_note": raw.get("chief_note", ""),
+    "diet": raw.get("diet", []) or [],
+    "lifestyle": raw.get("lifestyle", []) or [],
+    "topics": raw.get("topics", []) or [],
+    "complaint_sections": raw.get("complaint_sections", []) or [],
+    "llm_raw": raw,
+}
 
-        # --- 妊娠関連の注意を男性から除去（安全策）
-        sex = str(form.get("gender", "")).lower()
-        if sex not in ["female", "woman", "女性", "女"]:
-            import re as _re
-            def _strip_preg(s: str) -> str:
-                return _re.sub(r"妊娠中[^。]*。?", "", s or "")
-            assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary", ""))
-            if isinstance(assessment.get("chief_note"), str):
-                assessment["chief_note"] = _strip_preg(assessment["chief_note"])
+# ===== E) complaint_sections が“空のときだけ”空カードを補完（UI保護） =====
+if not assessment["complaint_sections"]:
+    chief = (form.get("chief_complaint") or "").strip()
+    assessment["complaint_sections"] = [{
+        "title": "主訴に直結するアドバイス",
+        "background": f"主訴：{chief}" if chief else "",
+        "do": [],
+        "foods_good": [],
+        "foods_avoid": [],
+        "points": [],
+        "acupoints": [],
+        "danger": []
+    }]
 
-        # --- 成功ログ
-        try:
-            print("[LLM ASSESS OK]", json.dumps(
-                {"chosen": assessment["chosen"], "cand_count": len(assessment["candidates"])},
-                ensure_ascii=False))
-        except Exception:
-            pass
+# ===== 妊娠関連の注意を男性から除去（安全策） =====
+sex = str(form.get("gender", "")).lower()
+if sex not in ["female", "woman", "女性", "女"]:
+    import re as _re
+    def _strip_preg(s: str) -> str:
+        return _re.sub(r"妊娠中[^。]*。?", "", s or "")
+    # 概要・注意書きから除去
+    assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary", ""))
+    if isinstance(assessment.get("chief_note"), str):
+        assessment["chief_note"] = _strip_preg(assessment["chief_note"])
+    # 各候補の「注意書き」も除去（あれば）
+    for c in assessment["candidates"]:
+        if isinstance(c.get("script"), dict):
+            c["script"]["watch"] = _strip_preg(c["script"].get("watch", ""))
 
-        return assessment
+# ===== F) ログ強化（原因を掴みやすく） =====
+try:
+    print("[LLM CONTENT LEN]", len(content))
+    print("[LLM ASSESS OK]", json.dumps(
+        {"chosen": assessment["chosen"], "cand_count": len(assessment["candidates"])},
+        ensure_ascii=False))
+except Exception:
+    pass
+
+return assessment
+
 
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
