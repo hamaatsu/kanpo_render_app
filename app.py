@@ -56,66 +56,96 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
 
         # ---- JSON強制＆スキーマ付きプロンプト ----
         sys_prompt = (
-    "あなたは漢方薬局のベテラン薬剤師です。"
-    "入力の問診（主訴、八綱、気血水、舌・脈・顔色、生活）を総合して証を推定し、"
-    "Top3の漢方薬候補を選定してください。"
-    "各候補には『主訴との関係』を1行で明記し、患者向け説明は3〜4文に制限、"
-    "薬膳（推奨/控え 各1〜3個）、生活アドバイス（3〜5個）、赤旗（1〜3個）を含めてください。"
-    "出力は【厳密にJSONのみ】。余計な文字やマークダウンは禁止。"
-    "スキーマは次の通り：{"
-    '"chosen":"string","candidates":[{"name":"string","score":number,"pharmacist_tip":"string","reason":"string","patient_explain":"string","lifestyle":["string"],"foods_good":["string"],"foods_avoid":["string"],"counsel_points":["string"],"watch":"string"}],'
-    '"axes":{"jitsu_kyo":"string","kan_netsu":"string","hyo_ri":"string"},'
-    '"qxs":{"qi":"string","xue":"string","sui":"string"},'
-    '"patient_summary":"string","chief_note":"string","diet":["string"],"lifestyle":["string"],"topics":["string"],'
-    '"complaint_sections":[{"title":"string","background":"string","do":["string"],"foods_good":["string"],"foods_avoid":["string"],"points":["string"],"acupoints":["string"],"danger":["string"]}]}'
-)
-
+            "あなたは漢方薬局のベテラン薬剤師です。"
+            "入力の問診（主訴、八綱、気血水、舌・脈・顔色、生活）を総合して証を推定し、"
+            "Top3の漢方薬候補を選定してください。"
+            "各候補には『主訴との関係』を1行で明記し、患者向け説明は3〜4文に制限、"
+            "薬膳（推奨/控え 各1〜3個）、生活アドバイス（3〜5個）、赤旗（1〜3個）を含めてください。"
+            "出力は【厳密にJSONのみ】。余計な文字やマークダウンは禁止。"
+            "スキーマは次の通り：{"
+            '"chosen":"string","candidates":[{"name":"string","score":number,"pharmacist_tip":"string","reason":"string","patient_explain":"string","lifestyle":["string"],"foods_good":["string"],"foods_avoid":["string"],"counsel_points":["string"],"watch":"string"}],'
+            '"axes":{"jitsu_kyo":"string","kan_netsu":"string","hyo_ri":"string"},'
+            '"qxs":{"qi":"string","xue":"string","sui":"string"},'
+            '"patient_summary":"string","chief_note":"string","diet":["string"],"lifestyle":["string"],"topics":["string"],'
+            '"complaint_sections":[{"title":"string","background":"string","do":["string"],"foods_good":["string"],"foods_avoid":["string"],"points":["string"],"acupoints":["string"],"danger":["string"]}]}'
+        )
 
         payload = {"form": form}
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
         resp = client.chat.completions.create(
-    model=model,
-    temperature=0.2,
-    max_tokens=1800, 
-    response_format={"type": "json_object"},
-    messages=[ ... ],
-)
-
-        content = resp.choices[0].message.content or ""
-
-# まず通常パース
-try:
-    raw = json.loads(content)
-except Exception:
-    # 失敗 → JSON修復プロンプトでリトライ（1回だけ）
-    try:
-        fix = client.chat.completions.create(
-            model=model, temperature=0,
+            model=model,
+            temperature=0.2,
+            max_tokens=1800,
             response_format={"type": "json_object"},
             messages=[
-                {"role": "system",
-                 "content": "あなたはJSON整形ツールです。入力はJSONになりかけのテキストです。"
-                            "無効部分を修復し、指定スキーマに合致する単一のJSONのみを出力してください。"
-                            "余計なテキストは禁止。"},
-                {"role": "user", "content": content}
-            ]
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
+            ],
         )
-        fixed = fix.choices[0].message.content or ""
-        raw = json.loads(fixed)
-        print("[LLM JSON FIXED]", len(fixed))
-    except Exception:
-        # それでもダメなら最後の救済：{} 抽出
-        start, end = content.find("{"), content.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            try:
-                raw = json.loads(content[start:end+1])
-            except Exception:
-                raw = {"llm_text": content}
-        else:
-            raw = {"llm_text": content}
+        content = resp.choices[0].message.content or ""
 
-# （この下に続く “candidates が空なら暫定補完 … / 正規化 …” は今まで通りでOK）
+        # ---- まず通常パース。失敗時は修復リトライ → 最後に{}抽出 ----
+        try:
+            raw = json.loads(content)
+        except Exception:
+            try:
+                fix = client.chat.completions.create(
+                    model=model, temperature=0,
+                    response_format={"type": "json_object"},
+                    messages=[
+                        {"role": "system",
+                         "content": "あなたはJSON整形ツールです。入力はJSONになりかけのテキストです。"
+                                    "無効部分を修復し、指定スキーマに合致する単一のJSONのみを出力してください。"
+                                    "余計なテキストは禁止。"},
+                        {"role": "user", "content": content}
+                    ]
+                )
+                fixed = fix.choices[0].message.content or ""
+                raw = json.loads(fixed)
+                print("[LLM JSON FIXED]", len(fixed))
+            except Exception:
+                start, end = content.find("{"), content.rfind("}")
+                if start != -1 and end != -1 and end > start:
+                    try:
+                        raw = json.loads(content[start:end+1])
+                    except Exception:
+                        raw = {"llm_text": content}
+                else:
+                    raw = {"llm_text": content}
+
+        # ---- candidates が空なら暫定候補を自動補完（UI空洞化防止）----
+        if not raw.get("candidates"):
+            chief = str(form.get("chief_complaint", "")).strip()
+            fallback_name = "六君子湯" if any(k in chief for k in ["胃","むかむか","食欲","膨満","げっぷ","ゲップ"]) else "補中益気湯"
+            raw["candidates"] = [{
+                "name": fallback_name, "score": 6.0,
+                "pharmacist_tip": "問診からの暫定候補（自動補完）。",
+                "reason": "主訴に近い症状に対応する一般的な処方。",
+                "patient_explain": "AI応答が空だったため、問診内容から暫定候補を自動補完しています。最終判断は薬剤師が行います。",
+                "lifestyle": [], "foods_good": [], "foods_avoid": [], "counsel_points": [], "watch": ""
+            }]
+            raw.setdefault("chosen", fallback_name)
+            raw["chief_note"] = (raw.get("chief_note") or "") + "（AI応答が空だったため暫定候補を補完）"
+            try:
+                print("[LLM RAW EMPTY]", content[:400])
+            except Exception:
+                pass
+
+        # ---- テンプレートが読む形に正規化 ----
+        cands_norm: List[Dict[str, Any]] = []
+        for it in (raw.get("candidates") or []):
+            cands_norm.append({
+                "name": it.get("name", ""),
+                "score": it.get("score", 1.0),
+                "pharmacist_tip": it.get("pharmacist_tip", ""),
+                "script": {"explain": it.get("patient_explain", ""), "watch": it.get("watch", "")},
+                "lifestyle": it.get("lifestyle", []) or [],
+                "foods_good": it.get("foods_good", []) or [],
+                "foods_avoid": it.get("foods_avoid", []) or [],
+                "counsel_points": it.get("counsel_points", []) or [],
+                "ai_reason": it.get("reason", ""),
+            })
 
         assessment = {
             "chosen": raw.get("chosen", (cands_norm[0]["name"] if cands_norm else "")),
