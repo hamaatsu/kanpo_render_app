@@ -1,147 +1,78 @@
 {
-  "title": "AI漢方・問診票（チェック式）",
+  "version": "1.0",
+  "title": "AI漢方相談 問診票",
+  "description": "八綱分類＋気血水＋舌診＋脈診＋顔色＋生活を基にAIが証を推定して漢方薬候補を提示します。",
   "sections": [
     {
-      "title": "顧客情報",
+      "id": "basic_info",
+      "title": "基本情報",
       "questions": [
-        { "id": "name", "label": "氏名（任意）", "type": "text", "placeholder": "例：山田 太郎" },
-        { "id": "age", "label": "年齢", "type": "number", "placeholder": "例：45" },
-        { "id": "gender", "label": "性別", "type": "select", "options": ["男性","女性","その他","無回答"] },
-        { "id": "region", "label": "地域（任意）", "type": "text", "placeholder": "例：東京" }
+        { "id": "name", "text": "氏名（任意）", "type": "text" },
+        { "id": "age", "text": "年齢", "type": "number" },
+        { "id": "gender", "text": "性別", "type": "choice", "options": ["男性","女性","その他"] },
+        { "id": "region", "text": "地域（任意）", "type": "text" },
+        { "id": "chief_complaint", "text": "主訴（今一番つらい症状）", "type": "text" },
+        { "id": "onset", "text": "発症時期と経過", "type": "choice", "options": ["急性","慢性","不明"] }
       ]
     },
     {
-      "title": "主訴",
+      "id": "hakkou",
+      "title": "八綱分類",
       "questions": [
-        { "id": "chief_complaint", "label": "今一番つらい症状（主訴）", "type": "textarea", "placeholder": "例：胃のむかつき、ゲップが多い。雨の日に悪化する など" }
-      ]
-    },
-
-    /* ===== 八綱（チェック式：UIは複数可、AIには単一ラベルに集計） ===== */
-    {
-      "title": "八綱（チェック式）",
-      "questions": [
-        {
-          "id": "kyojitsu_signs",
-          "label": "虚・実の兆候（当てはまるもの全て）",
-          "type": "checkboxes",
-          "options": [
-            "疲れやすい/だるい",
-            "声が小さい",
-            "息切れしやすい",
-            "食欲がない",
-            "冷えやすい",
-            "いらいら/怒りっぽい",
-            "痛みが強い/局所的",
-            "体力はある",
-            "便秘がち",
-            "舌苔が厚い"
-          ]
-        },
-        {
-          "id": "kanetsu_signs",
-          "label": "寒・熱の兆候（当てはまるもの全て）",
-          "type": "checkboxes",
-          "options": [
-            "冷えると悪化",
-            "温めると楽",
-            "冷たい飲食を好む",
-            "顔が赤い/ほてる",
-            "喉が渇く",
-            "発汗多い/口渇"
-          ]
-        },
-        {
-          "id": "hyori_signs",
-          "label": "表・裏の兆候（当てはまるもの全て）",
-          "type": "checkboxes",
-          "options": [
-            "悪寒/発熱/頭痛（かぜ様）",
-            "首肩こり",
-            "表在の痛み",
-            "腹部症状が主",
-            "慢性/深部の不調",
-            "冷えが下腹にある"
-          ]
-        }
-      ]
-    },
-
-    /* ===== 気血水（チェック式：代表パターンを自動決定） ===== */
-    {
-      "title": "気・血・水（チェック式）",
-      "questions": [
-        {
-          "id": "qixu_signs",
-          "label": "気虚の兆候",
-          "type": "checkboxes",
-          "options": ["疲れやすい","息切れ","自汗","声が小さい","食欲低下"]
-        },
-        {
-          "id": "qitai_signs",
-          "label": "気滞の兆候",
-          "type": "checkboxes",
-          "options": ["張った痛み/ガス/ゲップ","ため息","胸脇がつかえる","情緒の波","月経前症状"]
-        },
-        {
-          "id": "oketsu_signs",
-          "label": "瘀血の兆候",
-          "type": "checkboxes",
-          "options": ["刺すような痛み/固定痛","皮膚が暗い/アザ","月経血に塊","唇/舌が暗い"]
-        },
-        {
-          "id": "kekkyos_signs",
-          "label": "血虚の兆候",
-          "type": "checkboxes",
-          "options": ["めまい/動悸","顔色蒼白","乾燥/爪が割れやすい","不眠/健忘"]
-        },
-        {
-          "id": "suitai_signs",
-          "label": "水滞の兆候",
-          "type": "checkboxes",
-          "options": ["むくみ","めまい/重だるい","痰/鼻水","雨天で悪化"]
-        },
-        {
-          "id": "inkyo_signs",
-          "label": "陰虚の兆候",
-          "type": "checkboxes",
-          "options": ["午後〜夜間のほてり","口渇","寝汗","乾燥/便秘","舌が赤く苔少ない"]
-        }
-      ]
-    },
-
-    /* ===== 脈・顔・舌・生活（既存のselect/textareaでOK） ===== */
-    {
-      "title": "脈の状態",
-      "questions": [
-        { "id": "pulse_rate", "label": "脈の速さ", "type": "select", "options": ["遅い","普通","速い","不明"] },
-        { "id": "pulse_strength", "label": "脈の強さ", "type": "select", "options": ["弱い","普通","強い","不明"] }
+        { "id": "cold_heat", "text": "最近の体温感覚は？", "type": "choice", "options": ["冷えやすい","暑がり・ほてる","変化なし","不明"] },
+        { "id": "kyo_jitsu", "text": "体力や症状の強さは？", "type": "choice", "options": ["虚（体力不足／疲れやすい）","実（症状が強い）","中間","不明"] },
+        { "id": "hyou_ri", "text": "症状の範囲は？", "type": "choice", "options": ["表（皮膚・筋肉など外側）","裏（内臓・深部）","不明"] }
       ]
     },
     {
-      "title": "顔の状態",
+      "id": "ki_ketsu_sui",
+      "title": "気血水の状態",
       "questions": [
-        { "id": "face_state", "label": "顔色・むくみ・ほてりなど", "type": "textarea", "placeholder": "例：顔色が青白い／赤みが強い／むくみがある など" }
+        { "id": "ki_deficiency", "text": "疲れやすい・息切れ・声が弱い（気虚）", "type": "boolean" },
+        { "id": "ki_stagnation", "text": "胸のつかえ・ため息・イライラ（気滞）", "type": "boolean" },
+        { "id": "ki_rebellion", "text": "のぼせ・吐き気・動悸（気逆）", "type": "boolean" },
+        { "id": "blood_def", "text": "顔色が白い・唇が淡い・爪が割れやすい（血虚）", "type": "boolean" },
+        { "id": "yu_xue", "text": "くすみ・刺す痛み・紫斑（瘀血）", "type": "boolean" },
+        { "id": "sui_ret", "text": "むくみ・痰・めまい（痰湿/水滞）", "type": "boolean" }
       ]
     },
     {
-      "title": "舌の状態",
+      "id": "tongue",
+      "title": "舌診",
       "questions": [
-        { "id": "tongue_color", "label": "舌の色", "type": "select", "options": ["淡","紅","暗紅","紫","不明"] },
-        { "id": "tongue_coat", "label": "舌苔", "type": "select", "options": ["なし","薄い","厚い","黄","白","乾燥","不明"] },
-        { "id": "tongue_shape", "label": "舌の形", "type": "select", "options": ["歯痕","腫大","瘦薄","亀裂","正常","不明"] },
-        { "id": "tongue_moist", "label": "潤い", "type": "select", "options": ["乾燥","やや乾燥","普通","湿潤","不明"] }
+        { "id": "tongue_color", "text": "舌の色", "type": "choice", "options": ["淡紅","赤","暗赤","紫","不明"] },
+        { "id": "tongue_coating", "text": "舌苔", "type": "choice", "options": ["白","黄色","厚い","薄い","なし","不明"] },
+        { "id": "tongue_shape", "text": "舌の形", "type": "choice", "options": ["腫れぼったい","細い","歯痕あり","亀裂あり","不明"] },
+        { "id": "tongue_moist", "text": "舌の潤い", "type": "choice", "options": ["しっとり","乾燥","不明"] }
       ]
     },
     {
-      "title": "生活習慣",
+      "id": "pulse",
+      "title": "脈診",
       "questions": [
-        { "id": "sleep", "label": "睡眠の状態", "type": "select", "options": ["良い","やや不調","不調","不明"] },
-        { "id": "appetite", "label": "食欲", "type": "select", "options": ["良い","普通","やや低下","低下","不明"] },
-        { "id": "bowel", "label": "排便", "type": "select", "options": ["1日1回前後","便秘傾向","下痢傾向","不定","不明"] },
-        { "id": "sweat", "label": "発汗", "type": "select", "options": ["少ない","普通","多い","夜間多い","不明"] },
-        { "id": "stress", "label": "ストレス", "type": "select", "options": ["低い","普通","高い","非常に高い","不明"] }
+        { "id": "pulse_speed", "text": "脈の速さ", "type": "choice", "options": ["速い","普通","遅い","不明"] },
+        { "id": "pulse_strength", "text": "脈の強さ", "type": "choice", "options": ["強い","普通","弱い","不明"] },
+        { "id": "pulse_quality", "text": "脈の質（感覚）", "type": "choice", "options": ["弦（張って硬い）","滑（つるつる流れる）","細（細く弱い）","その他/不明"] }
+      ]
+    },
+    {
+      "id": "face",
+      "title": "顔色（任意）",
+      "questions": [
+        { "id": "face_color", "text": "顔の状態", "type": "choice", "options": ["赤みが強い/火照り","青白い","暗い/くすみ","むくんでいる","変化なし","不明"] }
+      ]
+    },
+    {
+      "id": "lifestyle",
+      "title": "生活・習慣",
+      "questions": [
+        { "id": "sleep", "text": "睡眠の状態", "type": "choice", "options": ["よく眠れる","入眠困難","中途覚醒","早朝覚醒"] },
+        { "id": "appetite", "text": "食欲", "type": "choice", "options": ["普通","低下","亢進","むらがある"] },
+        { "id": "bowel", "text": "排便", "type": "choice", "options": ["普通","便秘","下痢","下痢と便秘をくり返す"] },
+        { "id": "sweating", "text": "発汗", "type": "choice", "options": ["普通","多い","少ない"] },
+        { "id": "stress", "text": "ストレス", "type": "choice", "options": ["少ない","中等度","強い"] }
       ]
     }
-  ]
+  ],
+  "ai_instructions": "この顧客の主訴を基準とし、全回答をもとに八綱分類＋気血水＋舌・脈・顔色＋主訴を解析し、証を決定。漢方薬候補3種類と選定理由、患者向け説明、薬膳と日常生活アドバイス、赤旗（受診目安）を出力すること。男性には妊娠関連の注意を出さない。JSONで返すこと。"
 }
