@@ -8,7 +8,7 @@
   <style>
     body { max-width: 960px; margin: 24px auto; padding: 0 12px; }
     h1 { margin-bottom: 16px; }
-    .section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 16px 0; background:#fff; }
+    .section { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 16px 0; }
     .q { margin: 12px 0; }
     .q label { display: block; font-weight: 600; margin-bottom: 6px; }
     .help { color:#6b7280; font-size: 0.9em; }
@@ -38,19 +38,27 @@
             {% set placeholder = qu.placeholder or "" %}
 
             {% if typ == "text" %}
-              <label for="{{ qid }}">{{ qu.label }}</label>
+              <label for="{{ qid }}">{{ qu.label or qu.text }}</label>
               <input id="{{ qid }}" name="{{ qid }}" type="text" placeholder="{{ placeholder }}"/>
 
             {% elif typ == "number" %}
-              <label for="{{ qid }}">{{ qu.label }}</label>
+              <label for="{{ qid }}">{{ qu.label or qu.text }}</label>
               <input id="{{ qid }}" name="{{ qid }}" type="number" placeholder="{{ placeholder }}" inputmode="numeric"/>
 
             {% elif typ == "textarea" %}
-              <label for="{{ qid }}">{{ qu.label }}</label>
+              <label for="{{ qid }}">{{ qu.label or qu.text }}</label>
               <textarea id="{{ qid }}" name="{{ qid }}" placeholder="{{ placeholder }}"></textarea>
 
             {% elif typ == "select" %}
-              <label for="{{ qid }}">{{ qu.label }}</label>
+              <label for="{{ qid }}">{{ qu.label or qu.text }}</label>
+              <select id="{{ qid }}" name="{{ qid }}">
+                {% for opt in qu.options %}
+                  <option value="{{ opt }}">{{ opt }}</option>
+                {% endfor %}
+              </select>
+
+            {% elif typ == "choice" %}
+              <label for="{{ qid }}">{{ qu.label or qu.text }}</label>
               <select id="{{ qid }}" name="{{ qid }}">
                 {% for opt in qu.options %}
                   <option value="{{ opt }}">{{ opt }}</option>
@@ -60,11 +68,11 @@
             {% elif typ == "boolean" %}
               <label>
                 <input type="checkbox" name="{{ qid }}" />
-                {{ qu.label }}
+                {{ qu.label or qu.text }}
               </label>
 
             {% elif typ == "checkboxes" %}
-              <label>{{ qu.label }}</label>
+              <label>{{ qu.label or qu.text }}</label>
               <div class="row">
                 {% for opt in qu.options %}
                   <label class="chip">
@@ -76,7 +84,7 @@
 
             {% else %}
               <!-- 未対応タイプはテキストでフォールバック -->
-              <label for="{{ qid }}">{{ qu.label }}</label>
+              <label for="{{ qid }}">{{ qu.label or qu.text }}</label>
               <input id="{{ qid }}" name="{{ qid }}" type="text" placeholder="{{ placeholder }}"/>
             {% endif %}
 
