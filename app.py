@@ -49,12 +49,12 @@ def read_all_records() -> List[Dict[str, Any]]:
 def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        # 完全AI駆動のため API キーは必須
         return {"error": "OPENAI_API_KEY is not set. This app requires an API key for full AI-driven assessment."}
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
 
+        # ---- JSON強制＆スキーマ付きプロンプト ----
         sys_prompt = (
             "あなたは漢方薬局のベテラン薬剤師です。"
             "入力の問診（主訴、八綱、気血水、舌・脈・顔色、生活）を総合して証を推定し、"
@@ -63,45 +63,80 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
             "薬膳（推奨/控え）、生活アドバイス、面談で深掘りすべきポイント、受診目安（赤旗）を含めてください。"
             "必ずTop3のうち最低1つは主訴に直接対応する処方にしてください。"
             "男性には妊娠関連の注意は出さないでください。"
-            "出力は必ずJSON（candidates[], chosen, axes, qxs, patient_summary, complaint_sections, diet, lifestyle 等）。"
+            "出力は【厳密にJSONのみ】で、余計なテキストやマークダウンは禁止します。"
+            "以下のスキーマに完全準拠してください。"
+            "{"
+            '"chosen":"string",'
+            '"candidates":[{"name":"string","score":number,"pharmacist_tip":"string","reason":"string","patient_explain":"string",'
+            '"lifestyle":["string"],"foods_good":["string"],"foods_avoid":["string"],"counsel_points":["string"],"watch":"string"}],'
+            '"axes":{"jitsu_kyo":"string","kan_netsu":"string","hyo_ri":"string"},'
+            '"qxs":{"qi":"string","xue":"string","sui":"string"},'
+            '"patient_summary":"string","chief_note":"string","diet":["string"],"lifestyle":["string"],"topics":["string"],'
+            '"complaint_sections":[{"title":"string","background":"string","do":["string"],"foods_good":["string"],"foods_avoid":["string"],"points":["string"],"acupoints":["string"],"danger":["string"]}]'
+            "}"
         )
 
+        payload = {"form": form}
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
         resp = client.chat.completions.create(
             model=model,
             temperature=0.2,
+            max_tokens=1200,
+            # ★ JSONモードをON（対応モデル：gpt-4o/4o-mini など）
+            response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": json.dumps({"form": form}, ensure_ascii=False)}
+                {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}
             ],
         )
-        content = resp.choices[0].message.content
+        content = resp.choices[0].message.content or ""
 
-        # 1) LLM応答をJSONとして受ける（失敗時は生テキスト保持）
+        # ---- まず素直にJSONとして読む。失敗時は再パースを試みる ----
         try:
             raw = json.loads(content)
         except Exception:
-            raw = {"llm_text": content}
+            start, end = content.find("{"), content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    raw = json.loads(content[start:end+1])
+                except Exception:
+                    raw = {"llm_text": content}
+            else:
+                raw = {"llm_text": content}
 
-        # 2) テンプレートが期待する形へ“正規化”
+        # ---- candidates が空なら暫定候補を自動補完（UI空洞化防止）----
+        if not raw.get("candidates"):
+            chief = str(form.get("chief_complaint", "")).strip()
+            fallback_name = "六君子湯" if any(k in chief for k in ["胃","むかむか","食欲","膨満","げっぷ","ゲップ"]) else "補中益気湯"
+            raw["candidates"] = [{
+                "name": fallback_name, "score": 6.0,
+                "pharmacist_tip": "問診からの暫定候補（自動補完）。",
+                "reason": "主訴に近い症状に対応する一般的な処方。",
+                "patient_explain": "AI応答が空だったため、問診内容から暫定候補を自動補完しています。最終判断は薬剤師が行います。",
+                "lifestyle": [], "foods_good": [], "foods_avoid": [], "counsel_points": [], "watch": ""
+            }]
+            raw.setdefault("chosen", fallback_name)
+            raw["chief_note"] = (raw.get("chief_note") or "") + "（AI応答が空だったため暫定候補を補完）"
+            # デバッグ用に生テキストを短くログ出し
+            try:
+                print("[LLM RAW EMPTY]", content[:400])
+            except Exception:
+                pass
+
+        # ---- テンプレートが読む形に正規化 ----
         cands_norm = []
         for it in (raw.get("candidates") or []):
-            name = it.get("name", "")
-            score = it.get("score", 1.0)
-            pharmacist_tip = it.get("pharmacist_tip", "")
-            patient_explain = it.get("patient_explain", "")
-            watch = it.get("watch", "")
-            reason = it.get("reason", "")
             cands_norm.append({
-                "name": name,
-                "score": score,
-                "pharmacist_tip": pharmacist_tip,
-                "script": {"explain": patient_explain, "watch": watch},
-                "lifestyle": it.get("lifestyle", []),
-                "foods_good": it.get("foods_good", []),
-                "foods_avoid": it.get("foods_avoid", []),
-                "counsel_points": it.get("counsel_points", []),
-                "ai_reason": reason,
+                "name": it.get("name", ""),
+                "score": it.get("score", 1.0),
+                "pharmacist_tip": it.get("pharmacist_tip", ""),
+                "script": {"explain": it.get("patient_explain", ""), "watch": it.get("watch", "")},
+                "lifestyle": it.get("lifestyle", []) or [],
+                "foods_good": it.get("foods_good", []) or [],
+                "foods_avoid": it.get("foods_avoid", []) or [],
+                "counsel_points": it.get("counsel_points", []) or [],
+                "ai_reason": it.get("reason", ""),
             })
 
         assessment = {
@@ -111,14 +146,14 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
             "qxs": raw.get("qxs", {}),
             "patient_summary": raw.get("patient_summary", ""),
             "chief_note": raw.get("chief_note", ""),
-            "diet": raw.get("diet", []),
-            "lifestyle": raw.get("lifestyle", []),
-            "topics": raw.get("topics", []),
-            "complaint_sections": raw.get("complaint_sections", []),
-            "llm_raw": raw,  # デバッグ用に原文も保持
+            "diet": raw.get("diet", []) or [],
+            "lifestyle": raw.get("lifestyle", []) or [],
+            "topics": raw.get("topics", []) or [],
+            "complaint_sections": raw.get("complaint_sections", []) or [],
+            "llm_raw": raw,
         }
 
-        # 3) 妊娠関連の注意を男性からは削除（安全策）
+        # ---- 男性から妊娠注意を除去 ----
         sex = str(form.get("gender", "")).lower()
         if sex not in ["female", "woman", "女性", "女"]:
             import re as _re
@@ -129,33 +164,26 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
                 if isinstance(c.get("script"), dict):
                     c["script"]["watch"] = _strip_preg(c["script"].get("watch", ""))
 
-        # 4) 空配列・空文字の安全補完
-        assessment["candidates"] = assessment.get("candidates") or []
-        assessment["diet"] = assessment.get("diet") or []
-        assessment["lifestyle"] = assessment.get("lifestyle") or []
-        assessment["complaint_sections"] = assessment.get("complaint_sections") or []
-
-        # 5) 成功ログ（Render Logs で確認用）
+        # ---- 成功ログ ----
         try:
-            print(
-                "[LLM ASSESS OK]",
-                json.dumps(
-                    {"chosen": assessment["chosen"], "cand_count": len(assessment["candidates"])},
-                    ensure_ascii=False,
-                ),
-            )
+            print("[LLM ASSESS OK]", json.dumps(
+                {"chosen": assessment["chosen"], "cand_count": len(assessment["candidates"])},
+                ensure_ascii=False))
         except Exception:
             pass
 
         return assessment
 
     except Exception as e:
-        # 例外発生時はログ出力してエラー情報を返す
+        msg = f"{type(e).__name__}: {e}"
+        if "insufficient_quota" in msg or "429" in msg:
+            msg = "OpenAIのAPI残高が0のため、回答を生成できません。Billing > Overview からクレジットを追加してください。"
         try:
             print("[LLM ASSESS ERROR]", repr(e))
         except Exception:
             pass
-        return {"error": f"{type(e).__name__}: {e}"}
+        return {"error": msg}
+
 
 
 # ----------------------------------------------------------------------
