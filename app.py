@@ -15,7 +15,7 @@ DATA_DIR = DATA_ROOT / "data"
 for d in (DATA_ROOT, UPLOAD_DIR, DATA_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-# 問診票（※変更不要：このファイル定義に従ってフォームを描画・収集）
+# 問診票（JSON定義に従ってフォームを描画）
 with (APP_DIR / "ai_kampo_questionnaire.json").open("r", encoding="utf-8") as f:
     QUESTIONNAIRE = json.load(f)
 
@@ -41,33 +41,81 @@ def read_all_records() -> List[Dict[str, Any]]:
 
 
 # ----------------------------------------------------------------------
-# LLM によるワンショット評価（AI主体）
-#   - ルール系（主訴キーワード→候補プール / 再ランク / 簡易スコア）は全廃
-#   - 問診全体（form）だけを渡し、最終JSONを受け取る
-#   - テンプレートが期待するキー名に正規化
+# チェック式 → 単一ラベル集計（初心者向けUIをAI用に要約）
+# ----------------------------------------------------------------------
+def _winner(scores: Dict[str, int], tie_label: str) -> str:
+    if not scores:
+        return tie_label
+    mx = max(scores.values())
+    if mx <= 0:
+        return tie_label
+    winners = [k for k, v in scores.items() if v == mx]
+    return winners[0] if len(winners) == 1 else tie_label
+
+def derive_kyojitsu(signs: List[str]) -> str:
+    kyo = {"疲れやすい/だるい","声が小さい","息切れしやすい","食欲がない","冷えやすい"}
+    jitsu = {"いらいら/怒りっぽい","痛みが強い/局所的","体力はある","便秘がち","舌苔が厚い"}
+    scores = {"虚": 0, "実": 0}
+    for s in signs or []:
+        if s in kyo: scores["虚"] += 1
+        if s in jitsu: scores["実"] += 1
+    return _winner(scores, "中間／不明")
+
+def derive_kanetsu(signs: List[str]) -> str:
+    kan = {"冷えると悪化","温めると楽","冷たい飲食を好む"}
+    netsu = {"顔が赤い/ほてる","喉が渇く","発汗多い/口渇"}
+    scores = {"寒": 0, "熱": 0}
+    for s in signs or []:
+        if s in kan: scores["寒"] += 1
+        if s in netsu: scores["熱"] += 1
+    return _winner(scores, "中間／不明")
+
+def derive_hyori(signs: List[str]) -> str:
+    hyo = {"悪寒/発熱/頭痛（かぜ様）","首肩こり","表在の痛み"}
+    ri  = {"腹部症状が主","慢性/深部の不調","冷えが下腹にある"}
+    scores = {"表": 0, "裏": 0}
+    for s in signs or []:
+        if s in hyo: scores["表"] += 1
+        if s in ri:  scores["裏"] += 1
+    return _winner(scores, "中間／不明")
+
+def derive_kqs_main(buckets: Dict[str, List[str]]) -> str:
+    patterns = {
+        "気虚": buckets.get("qixu_signs", []) or [],
+        "気滞": buckets.get("qitai_signs", []) or [],
+        "瘀血": buckets.get("oketsu_signs", []) or [],
+        "血虚": buckets.get("kekkyos_signs", []) or [],
+        "水滞": buckets.get("suitai_signs", []) or [],
+        "陰虚": buckets.get("inkyo_signs", []) or [],
+    }
+    scores = {k: len(v) for k, v in patterns.items()}
+    return _winner(scores, "不明")
+
+
+# ----------------------------------------------------------------------
+# LLM（AI）判定：5項目スキーマで短く・堅牢に
 # ----------------------------------------------------------------------
 def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return {"error": "OPENAI_API_KEY is not set. This app requires an API key for full AI-driven assessment."}
+        return {"error": "OPENAI_API_KEY is not set. このアプリはAI判定にAPIキーが必須です。"}
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=api_key)
+        # Gunicornのtimeoutより短めに（サーバで落ちる前に制御）
+        client = OpenAI(api_key=api_key, timeout=55.0)
 
-        # ---- JSON強制＆スキーマ付きプロンプト ----
+        # LLM には要約ラベル（hakkou_* / kqs_main）を主に参照させる
         sys_prompt = (
-            "あなたは漢方薬局のベテラン薬剤師です。"
-            "入力の問診（主訴、八綱、気血水、舌・脈・顔色、生活）を総合して証を推定し、"
-            "Top3の漢方薬候補を選定してください。"
-            "各候補には『主訴との関係』を1行で明記し、患者向け説明は3〜4文に制限、"
-            "薬膳（推奨/控え 各1〜3個）、生活アドバイス（3〜5個）、赤旗（1〜3個）を含めてください。"
-            "出力は【厳密にJSONのみ】。余計な文字やマークダウンは禁止。"
-            "スキーマは次の通り：{"
-            '"chosen":"string","candidates":[{"name":"string","score":number,"pharmacist_tip":"string","reason":"string","patient_explain":"string","lifestyle":["string"],"foods_good":["string"],"foods_avoid":["string"],"counsel_points":["string"],"watch":"string"}],'
-            '"axes":{"jitsu_kyo":"string","kan_netsu":"string","hyo_ri":"string"},'
-            '"qxs":{"qi":"string","xue":"string","sui":"string"},'
-            '"patient_summary":"string","chief_note":"string","diet":["string"],"lifestyle":["string"],"topics":["string"],'
-            '"complaint_sections":[{"title":"string","background":"string","do":["string"],"foods_good":["string"],"foods_avoid":["string"],"points":["string"],"acupoints":["string"],"danger":["string"]}]}'
+            "あなたは漢方薬局の薬剤師AIです。初心者薬剤師が使います。"
+            "与えられた問診（氏名/年齢/性別、主訴、八綱= 'hakkou_jitsu_kyo','hakkou_kan_netsu','hakkou_hyo_ri'、"
+            "気血水= 'kqs_main'、脈・顔・舌・生活）から、次の5点を必ず日本語で返してください。"
+            "1) sho: 証を一文で確定（例：『気虚＋寒（やや表）』）。"
+            "2) candidates: 証を加味して適応する漢方薬を3つ。各候補は {name, why_fit(1〜2文)}。"
+            "3) selection_advice: 上記3つから1つに絞るための見分けポイントを簡潔に。"
+            "4) diet_good: 対象者に良い薬膳食材を5つ。"
+            "5) lifestyle: 日常生活のアドバイスを3〜5個。"
+            "出力は厳密にJSONのみ。余計な文字やmarkdown禁止。"
+            "スキーマ={'sho':string,'candidates':[{'name':string,'why_fit':string}],'selection_advice':string,'diet_good':[string],'lifestyle':[string]}。"
         )
 
         payload = {"form": form}
@@ -76,7 +124,7 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
         resp = client.chat.completions.create(
             model=model,
             temperature=0.2,
-            max_tokens=1800,
+            max_tokens=900,  # 短く速く
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": sys_prompt},
@@ -85,94 +133,70 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
         )
         content = resp.choices[0].message.content or ""
 
-        # ---- まず通常パース。失敗時は修復リトライ → 最後に{}抽出 ----
+        # --- JSONパース（壊れた場合は {} 抜き出しで救済）
         try:
             raw = json.loads(content)
         except Exception:
-            try:
-                fix = client.chat.completions.create(
-                    model=model, temperature=0,
-                    response_format={"type": "json_object"},
-                    messages=[
-                        {"role": "system",
-                         "content": "あなたはJSON整形ツールです。入力はJSONになりかけのテキストです。"
-                                    "無効部分を修復し、指定スキーマに合致する単一のJSONのみを出力してください。"
-                                    "余計なテキストは禁止。"},
-                        {"role": "user", "content": content}
-                    ]
-                )
-                fixed = fix.choices[0].message.content or ""
-                raw = json.loads(fixed)
-                print("[LLM JSON FIXED]", len(fixed))
-            except Exception:
-                start, end = content.find("{"), content.rfind("}")
-                if start != -1 and end != -1 and end > start:
-                    try:
-                        raw = json.loads(content[start:end+1])
-                    except Exception:
-                        raw = {"llm_text": content}
-                else:
+            start, end = content.find("{"), content.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                try:
+                    raw = json.loads(content[start:end+1])
+                except Exception:
                     raw = {"llm_text": content}
+            else:
+                raw = {"llm_text": content}
 
-        # ---- candidates が空なら暫定候補を自動補完（UI空洞化防止）----
-        if not raw.get("candidates"):
-            chief = str(form.get("chief_complaint", "")).strip()
-            fallback_name = "六君子湯" if any(k in chief for k in ["胃","むかむか","食欲","膨満","げっぷ","ゲップ"]) else "補中益気湯"
-            raw["candidates"] = [{
-                "name": fallback_name, "score": 6.0,
-                "pharmacist_tip": "問診からの暫定候補（自動補完）。",
-                "reason": "主訴に近い症状に対応する一般的な処方。",
-                "patient_explain": "AI応答が空だったため、問診内容から暫定候補を自動補完しています。最終判断は薬剤師が行います。",
-                "lifestyle": [], "foods_good": [], "foods_avoid": [], "counsel_points": [], "watch": ""
-            }]
-            raw.setdefault("chosen", fallback_name)
-            raw["chief_note"] = (raw.get("chief_note") or "") + "（AI応答が空だったため暫定候補を補完）"
-            try:
-                print("[LLM RAW EMPTY]", content[:400])
-            except Exception:
-                pass
-
-        # ---- テンプレートが読む形に正規化 ----
+        # --- 正規化（テンプレが読む形）
         cands_norm: List[Dict[str, Any]] = []
         for it in (raw.get("candidates") or []):
             cands_norm.append({
                 "name": it.get("name", ""),
-                "score": it.get("score", 1.0),
-                "pharmacist_tip": it.get("pharmacist_tip", ""),
-                "script": {"explain": it.get("patient_explain", ""), "watch": it.get("watch", "")},
-                "lifestyle": it.get("lifestyle", []) or [],
-                "foods_good": it.get("foods_good", []) or [],
-                "foods_avoid": it.get("foods_avoid", []) or [],
-                "counsel_points": it.get("counsel_points", []) or [],
-                "ai_reason": it.get("reason", ""),
+                "score": 1.0,
+                "pharmacist_tip": "",
+                "script": {"explain": it.get("why_fit", ""), "watch": ""},
+                "lifestyle": [],
+                "foods_good": [],
+                "foods_avoid": [],
+                "counsel_points": [],
+                "ai_reason": it.get("why_fit", ""),
             })
 
+        # --- フォールバック（空にならないよう最低1件）
+        if not cands_norm:
+            cands_norm = [{
+                "name": "補中益気湯",
+                "score": 1.0,
+                "pharmacist_tip": "",
+                "script": {"explain": "AI応答が不完全だったため暫定候補を表示しています。最終判断は薬剤師が行います。", "watch": ""},
+                "lifestyle": [], "foods_good": [], "foods_avoid": [], "counsel_points": [],
+                "ai_reason": "暫定候補"
+            }]
+
         assessment = {
-            "chosen": raw.get("chosen", (cands_norm[0]["name"] if cands_norm else "")),
+            "chosen": (cands_norm[0]["name"] if cands_norm else ""),
             "candidates": cands_norm,
-            "axes": raw.get("axes", {}),
-            "qxs": raw.get("qxs", {}),
-            "patient_summary": raw.get("patient_summary", ""),
-            "chief_note": raw.get("chief_note", ""),
-            "diet": raw.get("diet", []) or [],
+            "axes": {"sho": raw.get("sho", "")},
+            "qxs": {},
+            "patient_summary": f"証：{raw.get('sho','')}",
+            "chief_note": raw.get("selection_advice", ""),
+            "diet": raw.get("diet_good", []) or [],
             "lifestyle": raw.get("lifestyle", []) or [],
-            "topics": raw.get("topics", []) or [],
-            "complaint_sections": raw.get("complaint_sections", []) or [],
+            "topics": [],
+            "complaint_sections": [],
             "llm_raw": raw,
         }
 
-        # ---- 男性から妊娠注意を除去 ----
+        # --- 妊娠関連の注意を男性から除去（安全策）
         sex = str(form.get("gender", "")).lower()
         if sex not in ["female", "woman", "女性", "女"]:
             import re as _re
             def _strip_preg(s: str) -> str:
                 return _re.sub(r"妊娠中[^。]*。?", "", s or "")
             assessment["patient_summary"] = _strip_preg(assessment.get("patient_summary", ""))
-            for c in assessment["candidates"]:
-                if isinstance(c.get("script"), dict):
-                    c["script"]["watch"] = _strip_preg(c["script"].get("watch", ""))
+            if isinstance(assessment.get("chief_note"), str):
+                assessment["chief_note"] = _strip_preg(assessment["chief_note"])
 
-        # ---- 成功ログ ----
+        # --- 成功ログ
         try:
             print("[LLM ASSESS OK]", json.dumps(
                 {"chosen": assessment["chosen"], "cand_count": len(assessment["candidates"])},
@@ -184,6 +208,8 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
 
     except Exception as e:
         msg = f"{type(e).__name__}: {e}"
+        if "Timeout" in msg or "timed out" in msg:
+            msg = "AI応答が時間内に完了しませんでした（タイムアウト）。もう一度お試しください。"
         if "insufficient_quota" in msg or "429" in msg:
             msg = "OpenAIのAPI残高が0のため、回答を生成できません。Billing > Overview からクレジットを追加してください。"
         try:
@@ -193,18 +219,16 @@ def llm_assess_full(form: Dict[str, Any]) -> Dict[str, Any]:
         return {"error": msg}
 
 
-
 # ----------------------------------------------------------------------
 # ルーティング
 # ----------------------------------------------------------------------
 @app.route("/")
 def index():
-    # トップ：問診票の描画
     return render_template("index.html", q=QUESTIONNAIRE)
 
 @app.route("/submit", methods=["POST"])
 def submit():
-    # 問診の収集（問診票定義に沿って値を拾う）
+    # 問診の収集（JSON定義に沿って値を拾う）
     data: Dict[str, Any] = {}
     for sec in QUESTIONNAIRE.get("sections", []):
         for q in sec.get("questions", []):
@@ -214,24 +238,39 @@ def submit():
                 continue
             if qtype == "boolean":
                 data[qid] = (request.form.get(qid) == "on")
+            elif qtype == "checkboxes":
+                data[qid] = request.form.getlist(qid)  # ← 複数チェック対応
             else:
                 val = request.form.get(qid, "")
                 data[qid] = (val.strip() if isinstance(val, str) else val)
 
+    # チェック → 単一ラベルに要約（AIはこのラベル中心に参照）
+    data["hakkou_jitsu_kyo"] = derive_kyojitsu(data.get("kyojitsu_signs", []))
+    data["hakkou_kan_netsu"] = derive_kanetsu(data.get("kanetsu_signs", []))
+    data["hakkou_hyo_ri"]    = derive_hyori(data.get("hyori_signs", []))
+    data["kqs_main"] = derive_kqs_main({
+        "qixu_signs":   data.get("qixu_signs", []),
+        "qitai_signs":  data.get("qitai_signs", []),
+        "oketsu_signs": data.get("oketsu_signs", []),
+        "kekkyos_signs":data.get("kekkyos_signs", []),
+        "suitai_signs": data.get("suitai_signs", []),
+        "inkyo_signs":  data.get("inkyo_signs", []),
+    })
+
     rec_id = str(uuid.uuid4())
 
-    # ★ AI一本化：問診全体を LLM へ
+    # AI判定
     assessment = llm_assess_full(data)
 
-    # エラー時でもテンプレートが壊れないよう最小スキーマを付与
+    # エラー時でもテンプレが壊れない最小スキーマ
     if "error" in assessment:
         assessment = {
             "chosen": "",
             "candidates": [],
-            "axes": {},
+            "axes": {"sho": ""},
             "qxs": {},
             "patient_summary": "",
-            "chief_note": assessment["error"],  # 画面上部に理由が見えるように
+            "chief_note": assessment["error"],  # 画面上部に理由表示
             "diet": [],
             "lifestyle": [],
             "topics": [],
@@ -276,4 +315,5 @@ def admin():
 # エントリポイント
 # ----------------------------------------------------------------------
 if __name__ == "__main__":
+    # ローカル実行用。Render では gunicorn を使います。
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
