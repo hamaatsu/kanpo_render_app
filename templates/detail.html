@@ -41,16 +41,33 @@
       </section>
 
       <section>
-        <h2>漢方薬候補（3件）</h2>
-        <ol>
-          {% for k in result.kampo_candidates %}
-          <li>
-            <strong>{{ k.name }}</strong><br>
-            <span class="small">根拠：</span>{{ k.rationale }}
-          </li>
-          {% endfor %}
-        </ol>
-      </section>
+  <h2>漢方薬候補（3件）</h2>
+  <ol>
+    {% for k in result.kampo_candidates %}
+    <li>
+      <div>
+        <strong>{{ k.name }}</strong>
+        {% if k.priority_basis %}
+          <span class="badge">{{ k.priority_basis }}</span>
+        {% else %}
+          <span class="badge badge-muted">優先区分なし</span>
+        {% endif %}
+      </div>
+      <div class="small">
+        {% if k.scores %}
+          総合点: {{ "%.2f"|format(k.scores.total) if "total" in k.scores else "—" }}
+          ／ 症状適合: {{ "%.2f"|format(k.scores.symptom_fit) if "symptom_fit" in k.scores else "—" }}
+          ／ 証適合: {{ "%.2f"|format(k.scores.constitution_fit) if "constitution_fit" in k.scores else "—" }}
+          ／ 安全性: {{ "%.2f"|format(k.scores.safety) if "safety" in k.scores else "—" }}
+        {% else %}
+          スコア表示: —
+        {% endif %}
+      </div>
+      <div>根拠：{{ k.rationale }}</div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
 
       <section>
         <h2>1剤に絞る薬剤師へのアドバイス</h2>
