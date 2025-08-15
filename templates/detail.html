@@ -35,7 +35,7 @@
         <ul>
           <li><strong>主症状：</strong>{{ result.main_symptom }}</li>
           <li><strong>急性/慢性：</strong>{{ result.acute_or_chronic }}</li>
-          <li><strong>気血水：</strong>{{ result.kiketsusui | join("・") }}</li>
+          <li><strong>気血水：</strong>{{ (result.kiketsusui or []) | join("・") }}</li>
           <li><strong>八綱分類：</strong>{{ result.hakkou.label }}（表裏：{{ result.hakkou.hyou_ura }} ／ 寒熱：{{ result.hakkou.kan_netsu }} ／ 虚実：{{ result.hakkou.kyo_jitsu }}）</li>
         </ul>
       </section>
@@ -54,7 +54,7 @@
         {% endif %}
       </div>
       <div class="small">
-        {% if k.scores %}
+        {% if k.scores is defined and k.scores %}
           総合点: {{ "%.2f"|format(k.scores.total) if "total" in k.scores else "—" }}
           ／ 症状適合: {{ "%.2f"|format(k.scores.symptom_fit) if "symptom_fit" in k.scores else "—" }}
           ／ 証適合: {{ "%.2f"|format(k.scores.constitution_fit) if "constitution_fit" in k.scores else "—" }}
@@ -83,15 +83,34 @@
         </ul>
       </section>
 
-      <section>
-        <h2>主症状へのアドバイス</h2>
-        <p>{{ result.advice_for_main_symptom }}</p>
-      </section>
+      <!-- ツボ（主症状向け） -->
+<section>
+  <h2>ツボ（主症状に対して）</h2>
+  <ul>
+    {% if result.acupoints is defined and result.acupoints %}
+      {% for ac in result.acupoints %}
+        <li><strong>{{ ac.name }}</strong> — {{ ac.effect }}</li>
+      {% endfor %}
+    {% else %}
+      <li>今回のケースでは提案なし</li>
+    {% endif %}
+  </ul>
+</section>
 
-      <section>
-        <h2>生活上のアドバイス</h2>
-        <p>{{ result.lifestyle_advice }}</p>
-      </section>
+<!-- アロマ（体質・八綱を考慮） -->
+<section>
+  <h2>アロマ（体質・八綱に合わせて）</h2>
+  <ul>
+    {% if result.aroma is defined and result.aroma %}
+      {% for ar in result.aroma %}
+        <li><strong>{{ ar.name }}</strong> — {{ ar.effect }}</li>
+      {% endfor %}
+    {% else %}
+      <li>今回のケースでは提案なし</li>
+    {% endif %}
+  </ul>
+</section>
+
 
       {% if result.safety_notes %}
       <section>
@@ -102,7 +121,9 @@
 
       <section>
         <h2>信頼度</h2>
-        <p>AIの自己評価：{{ "%.2f"|format(result.confidence) }}</p>
+        <p>AIの自己評価：
+          {% if result.confidence is defined %}{{ "%.2f"|format(result.confidence) }}{% else %}—{% endif %}
+        </p>
       </section>
     {% endif %}
 
