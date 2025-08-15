@@ -25,7 +25,6 @@ except Exception as e:
 
 
 # ---------- Prompt builder ----------
-SYSTEM_PROMPT = # ---------- Prompt builder ----------
 SYSTEM_PROMPT = """あなたは経験豊富な日本の漢方薬剤師です。出力は常に日本語。
 
 入力として患者のフォーム回答（主症状、急性/慢性、気血水、八綱分類、舌診、脈診、生活・安全情報）が与えられます。
