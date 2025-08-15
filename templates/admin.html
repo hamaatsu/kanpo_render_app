@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>提出一覧</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; padding:16px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ddd; padding: 8px; }
+  th { background: #f6f6f6; }
+</style>
+<h1>提出一覧</h1>
+<table>
+  <tr><th>ID</th><th>日時(UTC)</th><th>氏名</th><th>年齢</th><th>性別</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.id }}</td>
+    <td>{{ r.created_at }}</td>
+    <td>{{ r.name }}</td>
+    <td>{{ r.age }}</td>
+    <td>{{ r.gender }}</td>
+  </tr>
+  {% endfor %}
+</table>
