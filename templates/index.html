@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>漢方相談AIフォーム</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>漢方相談AIフォーム</h1>
+    <p class="sub">薬剤師が問診しながら入力し、AIが解析します。</p>
+  </header>
+
+  <main>
+    <form method="post" action="/analyze">
+      <section>
+        <h2>基本情報</h2>
+        <label>氏名：<input type="text" name="name" required></label>
+        <label>年齢：<input type="number" name="age" min="0" max="120" required></label>
+        <label>性別：
+          <select name="gender" required>
+            <option value="">選択してください</option>
+            <option>男性</option>
+            <option>女性</option>
+            <option>その他</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>主訴・症状</h2>
+        <label>今日一番困っている症状はなんですか？
+          <textarea name="main_symptom" rows="2" required></textarea>
+        </label>
+        <label>いつからその症状がありますか？
+          <select name="acute_or_chronic" required>
+            <option value="">選択してください</option>
+            <option>急性</option>
+            <option>慢性</option>
+          </select>
+        </label>
+        <label>症状は時間帯や季節で変わりますか？
+          <select name="symptom_variation" required>
+            <option value="">選択してください</option>
+            <option>変わる</option>
+            <option>変わらない</option>
+            <option>わからない</option>
+          </select>
+        </label>
+        <label>悪化/緩和の条件：<textarea name="triggers" rows="2"></textarea></label>
+        <label>その他の症状：<textarea name="other_symptoms" rows="2"></textarea></label>
+      </section>
+
+      <section>
+        <h2>気の状態</h2>
+        <label>疲れやすい/息切れ/声が小さい：
+          <select name="qi_fatigue">
+            <option>いいえ</option><option>はい</option>
+          </select>
+        </label>
+        <label>やる気が出にくい/ため息が多い：
+          <select name="qi_motivation">
+            <option>いいえ</option><option>はい</option>
+          </select>
+        </label>
+        <label>胸のつかえ/ゲップ/膨満感：
+          <select name="qi_chestfull">
+            <option>いいえ</option><option>はい</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>血の状態</h2>
+        <label>顔色：
+          <select name="blood_face">
+            <option>普通</option><option>青白い</option>
+            <option>赤みがある</option><option>くすんでいる</option>
+          </select>
+        </label>
+        <label>手足の冷え：
+          <select name="blood_cold">
+            <option>ない</option><option>ある</option>
+          </select>
+        </label>
+        <label>手足のしびれ：
+          <select name="blood_numb">
+            <option>ない</option><option>ある</option>
+          </select>
+        </label>
+        <label>立ちくらみ：
+          <select name="blood_dizzyup">
+            <option>ない</option><option>ある</option>
+          </select>
+        </label>
+        <label>目の疲れ/視力の変化：
+          <select name="blood_eye">
+            <option>ない</option><option>ある</option>
+          </select>
+        </label>
+        <label>（女性のみ）月経：
+          <select name="blood_menses" multiple size="5">
+            <option>周期不順</option><option>量が多い</option>
+            <option>量が少ない</option><option>色が薄い</option>
+            <option>色が濃い</option><option>血塊がある</option>
+            <option>痛みがある</option><option>特に問題なし</option>
+          </select>
+          <small>※複数選択可（Ctrl/Commandキー）</small>
+        </label>
+      </section>
+
+      <section>
+        <h2>水の状態</h2>
+        <label>むくみ：<select name="water_edema"><option>ない</option><option>ある</option></select></label>
+        <label>めまい：<select name="water_vertigo"><option>ない</option><option>ある</option></select></label>
+        <label>耳鳴り：<select name="water_tinnitus"><option>ない</option><option>ある</option></select></label>
+        <label>痰/鼻水：
+          <select name="water_phlegm" multiple size="5">
+            <option>なし</option><option>多い</option><option>少ない</option>
+            <option>粘る</option><option>サラサラ</option>
+          </select>
+        </label>
+        <label>便の状態：
+          <select name="water_stool" multiple size="4">
+            <option>普通</option><option>軟便</option><option>下痢</option><option>便秘</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>八綱分類</h2>
+        <fieldset>
+          <legend>表裏</legend>
+          <label>症状の主部位：
+            <select name="yo_in_out">
+              <option>体の表面（皮膚・関節・鼻・喉など）【表】</option>
+              <option>体の内部（胃腸・内臓など）【裏】</option>
+            </select>
+          </label>
+          <label>発症の仕方：
+            <select name="yo_onset">
+              <option>急に出る【表】</option>
+              <option>ゆっくり出る／長引く【裏】</option>
+            </select>
+          </label>
+          <label>症状の場所：
+            <select name="yo_location">
+              <option>体の上半分が多い【表】</option>
+              <option>体の下半分が多い【裏】</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>寒熱</legend>
+          <label>体質：
+            <select name="cn_const">
+              <option>寒がり（冷えやすい）【寒】</option>
+              <option>暑がり（ほてりやすい）【熱】</option>
+            </select>
+          </label>
+          <label>温めると楽：
+            <select name="cn_warm_relief">
+              <option>はい【寒】</option><option>いいえ【熱】</option>
+            </select>
+          </label>
+          <label>冷やすと楽：
+            <select name="cn_cool_relief">
+              <option>はい【熱】</option><option>いいえ【寒】</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>虚実</legend>
+          <label>体力：
+            <select name="kj_strength">
+              <option>ある【実】</option><option>ない（疲れやすい）【虚】</option>
+            </select>
+          </label>
+          <label>症状の強さ：
+            <select name="kj_severity">
+              <option>急で強い【実】</option><option>弱く長引く【虚】</option>
+            </select>
+          </label>
+          <label>経過：
+            <select name="kj_course">
+              <option>短期間で治る【実】</option><option>慢性化しやすい【虚】</option>
+            </select>
+          </label>
+        </fieldset>
+      </section>
+
+      <section>
+        <h2>舌診</h2>
+        <label>舌の色：
+          <select name="tongue_color">
+            <option>正常（淡紅色）</option><option>淡白</option>
+            <option>紅</option><option>暗紅</option><option>紫色</option>
+          </select>
+        </label>
+        <label>舌苔の色：
+          <select name="tongue_coat_color">
+            <option>白苔</option><option>黄苔</option><option>無苔</option>
+          </select>
+        </label>
+        <label>舌苔の厚さ：
+          <select name="tongue_coat_thickness">
+            <option>薄い</option><option>厚い</option><option>なし</option>
+          </select>
+        </label>
+        <label>舌の形：
+          <select name="tongue_shape">
+            <option>正常</option><option>歯痕舌</option><option>痩せて細い</option><option>裂紋</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>脈診</h2>
+        <label>脈の深さ：
+          <select name="pulse_depth">
+            <option>中間（どちらともいえない）</option>
+            <option>浮脈</option><option>沈脈</option>
+          </select>
+        </label>
+        <label>脈の速さ：
+          <select name="pulse_rate">
+            <option>普通</option><option>遅脈</option><option>数脈</option>
+          </select>
+        </label>
+        <label>脈の強さ：
+          <select name="pulse_power">
+            <option>普通</option><option>虚脈</option><option>実脈</option>
+          </select>
+        </label>
+      </section>
+
+      <section>
+        <h2>生活習慣・安全</h2>
+        <label>睡眠時間：
+          <select name="sleep_hours">
+            <option>6〜8時間</option>
+            <option>8時間以上</option>
+            <option>4〜6時間</option>
+            <option>4時間未満</option>
+          </select>
+        </label>
+        <label>睡眠の質：
+          <select name="sleep_quality">
+            <option>普通</option><option>良い</option><option>悪い</option>
+          </select>
+        </label>
+        <label>運動習慣：
+          <select name="exercise">
+            <option>週2〜3回</option><option>ほぼ毎日</option>
+            <option>週1回以下</option><option>なし</option>
+          </select>
+        </label>
+        <label>ストレスの程度：
+          <select name="stress_level">
+            <option>普通</option><option>強い</option><option>ほぼない</option>
+          </select>
+        </label>
+        <label>季節や天候で体調は変わりますか？
+          <select name="seasonal_change">
+            <option>変わる</option><option>変わらない</option><option>わからない</option>
+          </select>
+        </label>
+        <label>現在服用中の薬/サプリ：<textarea name="meds" rows="2"></textarea></label>
+        <label>アレルギーの有無：
+          <select name="allergy">
+            <option>ない</option><option>ある</option>
+          </select>
+        </label>
+        <label>（ある場合）アレルゲン：<input type="text" name="allergen"></label>
+        <label>慢性疾患の有無：
+          <select name="chronic">
+            <option>ない</option><option>ある</option>
+          </select>
+        </label>
+        <label>（ある場合）病名：<input type="text" name="chronic_name"></label>
+        <label>妊娠・授乳：
+          <select name="preg_lact">
+            <option>いいえ</option><option>はい</option>
+          </select>
+        </label>
+      </section>
+
+      <div class="actions">
+        <button type="submit">AIで解析する</button>
+      </div>
+    </form>
+  </main>
+
+  <footer>
+    <p>© Kampo Consult AI</p>
+  </footer>
+</body>
+</html>
