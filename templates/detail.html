@@ -84,31 +84,16 @@
       </section>
 
       <!-- ツボ（主症状向け） -->
+<!-- ツボ（主症状向け） -->
 <section>
   <h2>ツボ（主症状に対して）</h2>
-  <ul>
-    {% if result.acupoints is defined and result.acupoints %}
-      {% for ac in result.acupoints %}
-        <li><strong>{{ ac.name }}</strong> — {{ ac.effect }}</li>
-      {% endfor %}
-    {% else %}
-      <li>今回のケースでは提案なし</li>
-    {% endif %}
-  </ul>
+  <p>{{ result.acupoints_advice or "今回のケースでは提案なし" }}</p>
 </section>
 
-<!-- アロマ（体質・八綱を考慮） -->
+<!-- アロマ（体質・八綱に合わせて） -->
 <section>
   <h2>アロマ（体質・八綱に合わせて）</h2>
-  <ul>
-    {% if result.aroma is defined and result.aroma %}
-      {% for ar in result.aroma %}
-        <li><strong>{{ ar.name }}</strong> — {{ ar.effect }}</li>
-      {% endfor %}
-    {% else %}
-      <li>今回のケースでは提案なし</li>
-    {% endif %}
-  </ul>
+  <p>{{ result.aroma_advice or "今回のケースでは提案なし" }}</p>
 </section>
 
 
