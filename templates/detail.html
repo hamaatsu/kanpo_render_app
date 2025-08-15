@@ -92,6 +92,56 @@
     <div class="actions">
       <a class="btn" href="/">入力に戻る</a>
     </div>
+
+    <!-- 解析結果の下あたりに追加（detail.html） -->
+<section>
+  <h2>データの保存</h2>
+  <div class="actions">
+    <button type="button" id="dl-ai-json">AI結果(JSON)を保存</button>
+    <button type="button" id="dl-form-json">入力内容(JSON)を保存</button>
+    <button type="button" id="dl-csv">CSVを保存</button>
+  </div>
+</section>
+
+<script>
+(function(){
+  // Jinja から安全にオブジェクト化
+  const aiResult = {{ (result or {}) | tojson }};
+  const formData = {{ (form or {}) | tojson }};
+
+  function download(filename, content, type="application/json"){
+    const blob = new Blob([content], {type});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }
+
+  function toCSV(obj){
+    // フラットな key,value の簡易CSV
+    const rows = [];
+    for (const [k, v] of Object.entries(obj)){
+      const val = Array.isArray(v) ? v.join("|") : (v===null||v===undefined ? "" : String(v));
+      rows.push(`"${k.replace(/"/g,'""')}","${val.replace(/"/g,'""')}"`);
+    }
+    return "key,value\n" + rows.join("\n");
+  }
+
+  document.getElementById("dl-ai-json")?.addEventListener("click", ()=>{
+    download("ai_result.json", JSON.stringify(aiResult, null, 2));
+  });
+  document.getElementById("dl-form-json")?.addEventListener("click", ()=>{
+    download("form_data.json", JSON.stringify(formData, null, 2));
+  });
+  document.getElementById("dl-csv")?.addEventListener("click", ()=>{
+    // 入力とAI結果を結合してCSV化
+    const merged = {...formData, _ai: aiResult};
+    download("submission.csv", toCSV(merged), "text/csv");
+  });
+})();
+</script>
+
   </main>
 </body>
 </html>
