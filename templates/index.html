@@ -159,24 +159,26 @@
             <option value="ある">ある</option>
           </select>
         </label>
-        <label>痰/鼻水（複数選択可）：
-          <select name="water_phlegm" multiple size="5">
-            <option value="なし">なし</option>
-            <option value="多い">多い</option>
-            <option value="少ない">少ない</option>
-            <option value="粘る">粘る</option>
-            <option value="サラサラ">サラサラ</option>
-          </select>
-        </label>
-        <label>便の状態（複数選択可）：
-          <select name="water_stool" multiple size="4">
-            <option value="普通">普通</option>
-            <option value="軟便">軟便</option>
-            <option value="下痢">下痢</option>
-            <option value="便秘">便秘</option>
-          </select>
-        </label>
-      </section>
+
+<!-- 痰/鼻水（複数選択）→ チェックボックス化 -->
+<div>
+  <p>痰/鼻水（複数選択可）：該当するもの全てにチェック</p>
+  <label><input type="checkbox" name="water_phlegm" value="なし" data-group="phlegm" data-none>なし</label>
+  <label><input type="checkbox" name="water_phlegm" value="多い" data-group="phlegm">多い</label>
+  <label><input type="checkbox" name="water_phlegm" value="少ない" data-group="phlegm">少ない</label>
+  <label><input type="checkbox" name="water_phlegm" value="粘る" data-group="phlegm">粘る</label>
+  <label><input type="checkbox" name="water_phlegm" value="サラサラ" data-group="phlegm">サラサラ</label>
+</div>
+
+ <!-- 便の状態（複数選択）→ チェックボックス化 -->
+<div>
+  <p>便の状態（複数選択可）：該当するもの全てにチェック</p>
+  <label><input type="checkbox" name="water_stool" value="普通" data-group="stool" data-none>普通</label>
+  <label><input type="checkbox" name="water_stool" value="軟便" data-group="stool">軟便</label>
+  <label><input type="checkbox" name="water_stool" value="下痢" data-group="stool">下痢</label>
+  <label><input type="checkbox" name="water_stool" value="便秘" data-group="stool">便秘</label>
+</div>
+
 
       <!-- 八綱分類：誘導語を表示しない -->
       <section>
