@@ -113,7 +113,6 @@ def call_openai(messages):
     # Chat Completions API（互換性重視）
     resp = client.chat.completions.create(
         model=MODEL,
-        temperature=0.4,
         messages=messages,
     )
     return resp.choices[0].message.content
