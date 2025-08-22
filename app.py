@@ -2,32 +2,42 @@
 import os
 import json
 import re
+from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, flash
 
 # ---------- Config ----------
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")  # 任意。Azure/OpenRouter等を使うなら設定
+OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")  # 任意（Azure/OpenRouter等）
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret")  # セッション/flash用
 
+# === inventory.json の読み込み ===
+APP_DIR = Path(__file__).resolve().parent
+INVENTORY_PATH = APP_DIR / "inventory.json"
+try:
+    with INVENTORY_PATH.open("r", encoding="utf-8") as f:
+        _inv = json.load(f)
+    ALLOWED_FORMULAS = list(dict.fromkeys(_inv.get("allowed_formulas", [])))
+except Exception:
+    ALLOWED_FORMULAS = []
+
 # ---------- OpenAI client (new SDK) ----------
-# 2024以降の新SDKを想定
 try:
     from openai import OpenAI
     _client_kwargs = {"api_key": OPENAI_API_KEY}
     if OPENAI_BASE_URL:
         _client_kwargs["base_url"] = OPENAI_BASE_URL
     client = OpenAI(**_client_kwargs)
-except Exception as e:
+except Exception:
     client = None
 
 
 # ---------- Prompt builder ----------
 SYSTEM_PROMPT = """あなたは経験豊富な日本の漢方薬剤師です。出力は常に日本語。
 
-入力として患者のフォーム回答（主症状、急性/慢性、気血水、八綱分類、舌診、脈診、生活・安全情報）が与えられます。
+入力として患者のフォーム回答（年齢、性別、主症状、急性/慢性、気血水、八綱分類、舌診、脈診、生活・安全情報）が与えられます。
 
 【方針（重要）】
 - 症状優先/証優先の重み付けを数値で行う：
@@ -37,11 +47,12 @@ SYSTEM_PROMPT = """あなたは経験豊富な日本の漢方薬剤師です。�
   1つ目＝症状優先、2つ目＝証優先、3つ目＝折衷（総合点上位）
 - 日本国内で使用可能な薬局製剤または保険適応漢方処方「のみ」を用いる。中医学の通称や国外限定名は不可。曖昧なら日本で一般的な名称に置き換える。
 - 安全性（妊娠・授乳・併用薬・アレルギー）に抵触する処方は候補から除外し、その旨を safety_notes に明記。
+- 候補に挙げてよい方剤は user から渡す allowed_formulas の中だけです。必ずその中から選び、名称は完全一致で出力してください。
 
 【あなたのタスク】
 1) フォーム回答を根拠に、主症状と急性/慢性を再確認（矛盾があれば指摘）。
 2) 気血水を6分類（気虚/気滞/血虚/瘀血/水滞/津液不足）で判定（正常は出力から除外してよい）。
-3) 八綱分類（表or裏、寒or熱、虚or実）を判定し、「表熱虚」などのラベルを生成。
+3) 八綱分類（表or裏、寒or熱、虚or実）を判定し、「表熱実」などのラベルを生成。
 4) 処方スコアリング（内部想定の候補群に対し0〜1で算出）：
    - symptom_fit（主症状・急性/慢性に対する一致度）
    - constitution_fit（気血水＋八綱に対する一致度）
@@ -92,25 +103,26 @@ SYSTEM_PROMPT = """あなたは経験豊富な日本の漢方薬剤師です。�
     {"name":"", "effect":""},
     {"name":"", "effect":""}
   ],
-  "acupoints_advice": "",   // ツボの段落（80〜100字）
-
-  "aroma_advice": "",       // アロマの段落（80〜100字）
-
+  "acupoints_advice": "",
+  "aroma_advice": "",
   "safety_notes": "",
   "confidence": 0.85
 }
 """
 
 def build_user_prompt(form_data: dict) -> str:
-    # 可読性のためにJSONそのものを渡す
-    return "以下が患者フォームの生データです。これにもとづいて上記タスクを実行してください。\n\n" + json.dumps(form_data, ensure_ascii=False, indent=2)
+    payload = {
+        "form": form_data,
+        "allowed_formulas": ALLOWED_FORMULAS,
+        "instruction": "候補に挙げてよい方剤は allowed_formulas の中だけ。名前は完全一致で返答。該当が薄い場合も必ずその中から3剤を理由付きで選ぶこと。"
+    }
+    return "以下のJSONを読み取り、タスクを実行してください。\n\n" + json.dumps(payload, ensure_ascii=False, indent=2)
 
 
 def call_openai(messages):
     if client is None or not OPENAI_API_KEY:
         raise RuntimeError("OpenAIクライアントが初期化されていません。OPENAI_API_KEY を環境変数に設定してください。")
-
-    # Chat Completions API（互換性重視）
+    # Chat Completions API
     resp = client.chat.completions.create(
         model=MODEL,
         messages=messages,
@@ -122,20 +134,39 @@ def safe_json_extract(s: str):
     """モデル出力から最初のJSONオブジェクトを抽出してparseする。"""
     if not s:
         return None
-    # コードフェンス除去
     s_clean = re.sub(r"^```(?:json)?|```$", "", s.strip(), flags=re.MULTILINE)
-    # 最初の { ... } を抜き出す
     match = re.search(r"\{.*\}", s_clean, flags=re.DOTALL)
     if match:
         try:
             return json.loads(match.group(0))
         except Exception:
             pass
-    # そのままトライ
     try:
         return json.loads(s_clean)
     except Exception:
         return None
+
+
+def filter_candidates_to_allowlist(parsed: dict, allowed: list[str]):
+    """LLM出力の候補を allowlist でふるいにかける。除外された名前を返す。"""
+    if not parsed or not isinstance(parsed, dict):
+        return parsed, []
+    if not allowed:
+        return parsed, []
+
+    dropped = []
+    cands = parsed.get("kampo_candidates")
+    if isinstance(cands, list):
+        kept = []
+        for c in cands:
+            name = (c or {}).get("name")
+            if name in allowed:
+                kept.append(c)
+            else:
+                if name:
+                    dropped.append(name)
+        parsed["kampo_candidates"] = kept
+    return parsed, dropped
 
 
 # ---------- Routes ----------
@@ -147,13 +178,9 @@ def index():
 @app.route("/analyze", methods=["POST"])
 def analyze():
     form_data = request.form.to_dict(flat=False)  # チェックボックス等の複数値対応
-    # 単一値を整形
     normalized = {}
     for k, v in form_data.items():
-        if len(v) == 1:
-            normalized[k] = v[0]
-        else:
-            normalized[k] = v  # 複数選択は配列のまま
+        normalized[k] = v[0] if len(v) == 1 else v
 
     try:
         messages = [
@@ -165,6 +192,14 @@ def analyze():
         if not parsed:
             flash("AIの出力をJSONとして解釈できませんでした。生出力を表示します。", "warning")
             return render_template("detail.html", raw_output=raw, result=None, form=normalized)
+
+        # allowlist 安全網
+        parsed, dropped = filter_candidates_to_allowlist(parsed, ALLOWED_FORMULAS)
+        if dropped:
+            flash("許可リスト外の処方を除外しました: " + "、".join(dropped), "warning")
+        if not parsed.get("kampo_candidates"):
+            flash("候補が全てリスト外だったか、生成に失敗しました。主訴や証の記載をもう少し詳しくして再度お試しください。", "warning")
+
         return render_template("detail.html", result=parsed, raw_output=None, form=normalized)
 
     except Exception as e:
