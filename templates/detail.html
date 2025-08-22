@@ -30,6 +30,18 @@
     {% endif %}
 
     {% if result %}
+    <section class="card">
+  <h3>患者情報</h3>
+  {% set pm = result.patient_meta if result and result.patient_meta else None %}
+  <div>
+    氏名：
+    <b>{{ (form.name or form["氏名"]) if form else (pm.name if pm else "") }}</b>
+    ／ 年齢：
+    <b>{{ (form.age) if form else (pm.age if pm else "") }}</b>
+    ／ 性別：
+    <b>{{ (form.gender or form.sex or form["性別"]) if form else (pm.gender if pm else "") }}</b>
+  </div>
+</section>
       <section>
         <h2>基本判定</h2>
         <ul>
