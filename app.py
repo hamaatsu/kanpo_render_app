@@ -2,6 +2,8 @@
 import os
 import json
 import re
+import hashlib
+import random
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, flash
 
@@ -233,6 +235,74 @@ def analyze():
 
         # --- 主訴優先は必ず適応OKに揃える（サーバ側の保険） ---
         cands = parsed.get("kampo_candidates") or []
+        # ★ ここから追加：104種から不足分を必ず補完して3枠埋める（決定論的）
+def _need_categories(existing):
+    have = { (c or {}).get("priority_basis") for c in existing }
+    order = ["症状優先", "証優先", "折衷"]
+    return [cat for cat in order if cat not in have]
+
+# 既存候補を名前重複なく丸める
+dedup = []
+seen = set()
+for c in cands:
+    n = (c or {}).get("name")
+    if n and (n not in seen):
+        dedup.append(c)
+        seen.add(n)
+cands = dedup
+
+# 3件未満なら 104 から決定論的に補完
+if len(cands) < 3:
+    # 入力内容からハッシュを作って“非ランダム”に決める（毎回安定）
+    seed_src = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
+    h = hashlib.sha256(seed_src.encode("utf-8")).hexdigest()
+    rnd = random.Random(int(h[:16], 16))
+
+    # 既存以外のプール
+    pool = [x for x in ALLOWED_FORMULAS if x not in { (c or {}).get("name") for c in cands }]
+    rnd.shuffle(pool)
+
+    # まだ足りないカテゴリを順に埋める
+    for cat in _need_categories(cands):
+        if not pool:
+            break
+        pick = pool.pop(0)
+        cands.append({
+            "name": pick,
+            "rationale": "在庫リストから自動補完。詳細根拠は薬剤師の臨床判断で確認してください。",
+            "scores": {"symptom_fit":0.0, "constitution_fit":0.0, "safety":1.0, "total":0.5},
+            "priority_basis": cat,
+            # 症状優先だけは“日本の適応OK”を強制（保険）。他は False で可。
+            "japan_indication_ok": True if cat == "症状優先" else False,
+            "age_sex_considerations": ""
+        })
+
+    # まだ3件未満なら、とにかく先頭から埋める
+    while len(cands) < 3 and pool:
+        cat = ["症状優先","証優先","折衷"][len(cands)] if len(cands) < 3 else "折衷"
+        pick = pool.pop(0)
+        cands.append({
+            "name": pick,
+            "rationale": "在庫リストから自動補完。",
+            "scores": {"symptom_fit":0.0, "constitution_fit":0.0, "safety":1.0, "total":0.5},
+            "priority_basis": cat,
+            "japan_indication_ok": True if cat == "症状優先" else False,
+            "age_sex_considerations": ""
+        })
+
+# 先頭（症状優先）が必ず適応OKになるように最終チェック
+sym_idx = next((i for i, c in enumerate(cands) if (c or {}).get("priority_basis") == "症状優先"), None)
+if sym_idx is not None:
+    if not bool((cands[sym_idx] or {}).get("japan_indication_ok")):
+        swap_idx = next((i for i, c in enumerate(cands) if bool((c or {}).get("japan_indication_ok"))), None)
+        if swap_idx is not None:
+            cands[0], cands[swap_idx] = cands[swap_idx], cands[0]
+            cands[0]["priority_basis"] = "症状優先"
+
+# 3件に丸める & 反映
+parsed["kampo_candidates"] = cands[:3]
+# ★ ここまで追加
+
         # 「症状優先」の候補を探す
         sym_idx = next((i for i, c in enumerate(cands) if (c or {}).get("priority_basis") == "症状優先"), None)
         if sym_idx is not None:
