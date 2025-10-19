@@ -22,6 +22,25 @@
   .muted{color:#6b7280;font-size:12px}
   @media(max-width:1200px){.grid4{grid-template-columns:repeat(3,1fr)}}
   @media(max-width:900px){.grid3{grid-template-columns:1fr}.grid4{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)}}
+
+/* === Thinking Overlay / Spinner === */
+#thinkingOverlay{
+  position:fixed; inset:0; background:rgba(255,255,255,.6);
+  display:none; align-items:center; justify-content:center; z-index:9999;
+  backdrop-filter:saturate(120%) blur(2px);
+}
+.spinner{
+  width:54px; height:54px; border-radius:50%;
+  border:6px solid #e5e7eb; border-top-color:#2563eb;
+  animation:spin 1s linear infinite;
+}
+#thinkingText{ margin-top:12px; color:#374151; font-weight:700; text-align:center }
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* === ボタンの押下／無効化 表現 === */
+button:active{ transform:translateY(1px); filter:saturate(115%); }
+button[disabled]{ opacity:.6; cursor:not-allowed; }
+
 </style>
 </head>
 <body>
@@ -376,43 +395,105 @@ document.getElementById('calc').onclick = ()=>{
 };
 
 // AI送信ボタン
-document.getElementById('sendAI').onclick = async ()=>{
-  // 証（体質％）
-  const ids = gatherSelectedSho();
-  const scores = accumulate(ids);
-  const pairs = composite(scores);
-  const constitution = Object.fromEntries(pairs); // {"気虚体質":xx,...}
+document.getElementById("sendAI").onclick = async (ev)=>{
+  const btn = ev.currentTarget;
+  try{
+    setLoading(true, btn);
 
-  // 主訴
-  const chief = collectChiefSelections();
-  const detail = document.getElementById('chief_detail').value.trim();
+    // === 体質％（既存ロジック） ===
+    const ids = gatherSelectedSho();
+    const scores = accumulate(ids);
+    const pairs = composite(scores);
+    const constitution = Object.fromEntries(pairs);
 
-  const payload = {
-    name: document.getElementById('name').value,
-    age: document.getElementById('age').value,
-    gender: document.getElementById('gender').value,
-    chief: {
-      selections: chief.selections,   // [{category:"婦人科・月経", symptoms:["月経痛","PMS"]}, ...]
-      detail: detail
-    },
-    constitution // 体質％
-  };
+    // === 主訴（カテゴリ横断の複数選択・既存ロジック）===
+    const checked = Array.from(document.querySelectorAll('input[type="checkbox"][data-cat]:checked'));
+    const byCat = {};
+    checked.forEach(ch=>{
+      const cat = ch.getAttribute('data-cat'), val = ch.value;
+      if(!byCat[cat]) byCat[cat] = [];
+      byCat[cat].push(val);
+    });
+    const selections = Object.entries(byCat).map(([category, symptoms])=>({category, symptoms}));
+    const detail = document.getElementById('chief_detail').value.trim();
 
-  const res = await fetch("/analyze", {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify(payload)
-  });
-  const result = await res.json();
-  document.getElementById("aiResult").innerHTML = `
-    <h3>AIによる提案結果</h3>
-    <div><b>症状優先：</b> ${result.formula_symptom?.name||"-"}（${result.formula_symptom?.reason||"-"}）</div>
-    <div><b>証優先：</b> ${result.formula_sho?.name||"-"}（${result.formula_sho?.reason||"-"}）</div>
-    <div><b>折衷案：</b> ${result.formula_mixed?.name||"-"}（${result.formula_mixed?.reason||"-"}）</div>
-    <hr>
-    <div><b>薬剤師コメント：</b>${result.pharmacist_advice||"-"}</div>
-  `;
+    const payload = {
+      name: document.getElementById('name').value,
+      age: document.getElementById('age').value,
+      gender: document.getElementById('gender').value,
+      chief: { selections, detail },
+      constitution
+    };
+
+    // 送信（タイムアウト保険付き）
+    const controller = new AbortController();
+    const t = setTimeout(()=>controller.abort(), 60000); // 60秒で中断
+    const res = await fetch("/analyze", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    }).catch(e=>{ throw new Error(e.name === 'AbortError' ? 'タイムアウトしました' : e.message); });
+    clearTimeout(t);
+
+    if(!res.ok){
+      const text = await res.text();
+      throw new Error(`サーバエラー (${res.status}) ${text}`);
+    }
+
+    const result = await res.json();
+    document.getElementById("aiResult").innerHTML = `
+      <h3>AIによる提案結果</h3>
+      <p><b>症状優先：</b> ${result.formula_symptom?.name||"-"}<br>
+      <span class="muted">${result.formula_symptom?.reason||"-"}</span></p>
+      <p><b>証優先：</b> ${result.formula_sho?.name||"-"}<br>
+      <span class="muted">${result.formula_sho?.reason||"-"}</span></p>
+      <p><b>折衷案：</b> ${result.formula_mixed?.name||"-"}<br>
+      <span class="muted">${result.formula_mixed?.reason||"-"}</span></p>
+      <hr>
+      <p><b>薬剤師コメント：</b><br>${result.pharmacist_advice||"-"}</p>
+    `;
+  }catch(err){
+    document.getElementById("aiResult").innerHTML =
+      `<div style="color:#b91c1c"><b>送信に失敗：</b>${String(err)}</div>`;
+  }finally{
+    setLoading(false, btn);
+  }
 };
+
+// === ローディング制御 ===
+function setLoading(isLoading, btn){
+  const overlay = document.getElementById('thinkingOverlay');
+  const calcBtn = document.getElementById('calc');
+  const sendBtn = document.getElementById('sendAI');
+
+  if(isLoading){
+    overlay.style.display = 'flex';
+    calcBtn?.setAttribute('disabled','true');
+    sendBtn?.setAttribute('disabled','true');
+    if(btn){
+      btn.dataset._orig = btn.textContent;
+      btn.textContent = '送信中…';
+    }
+  }else{
+    overlay.style.display = 'none';
+    calcBtn?.removeAttribute('disabled');
+    sendBtn?.removeAttribute('disabled');
+    if(btn && btn.dataset._orig){
+      btn.textContent = btn.dataset._orig;
+      delete btn.dataset._orig;
+    }
+  }
+}
+
 </script>
+<!-- Thinking overlay -->
+<div id="thinkingOverlay" role="status" aria-live="polite" aria-busy="true">
+  <div style="display:flex;flex-direction:column;align-items:center">
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="thinkingText">AIが考えています…</div>
+  </div>
+</div>
+
 </body>
 </html>
