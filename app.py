@@ -201,16 +201,27 @@ def index():
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    form_data = request.form.to_dict(flat=False)  # チェックボックス等の複数値対応
-    normalized = {}
-    for k, v in form_data.items():
-        normalized[k] = v[0] if len(v) == 1 else v
+    # JSON で送られてきた場合も受け取れるようにする
+    try:
+        if request.is_json:
+            data = request.get_json()
+        else:
+            data = request.form.to_dict()
+    except Exception as e:
+        return jsonify({"error": f"データ受信エラー: {str(e)}"}), 400
 
+    # データを共通フォーマットに整える
+    if isinstance(data, dict):
+        normalized = data
+    else:
+        normalized = {}
+    # ここから下は今まで通り（AI呼び出し処理など）
     try:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_user_prompt(normalized)},
         ]
+
         raw = call_openai(messages)
         parsed = safe_json_extract(raw)
         if not parsed:
