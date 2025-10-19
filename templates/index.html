@@ -443,16 +443,24 @@ document.getElementById("sendAI").onclick = async (ev)=>{
 
     const result = await res.json();
     document.getElementById("aiResult").innerHTML = `
-      <h3>AIによる提案結果</h3>
-      <p><b>症状優先：</b> ${result.formula_symptom?.name||"-"}<br>
-      <span class="muted">${result.formula_symptom?.reason||"-"}</span></p>
-      <p><b>証優先：</b> ${result.formula_sho?.name||"-"}<br>
-      <span class="muted">${result.formula_sho?.reason||"-"}</span></p>
-      <p><b>折衷案：</b> ${result.formula_mixed?.name||"-"}<br>
-      <span class="muted">${result.formula_mixed?.reason||"-"}</span></p>
-      <hr>
-      <p><b>薬剤師コメント：</b><br>${result.pharmacist_advice||"-"}</p>
-    `;
+  <h3>AIによる提案結果</h3>
+  <p><b>症状優先：</b> ${result.formula_symptom?.name || "-"}<br>
+  <span class="muted">${result.formula_symptom?.reason || "-"}</span></p>
+  <p><b>証優先：</b> ${result.formula_sho?.name || "-"}<br>
+  <span class="muted">${result.formula_sho?.reason || "-"}</span></p>
+  <p><b>折衷案：</b> ${result.formula_mixed?.name || "-"}<br>
+  <span class="muted">${result.formula_mixed?.reason || "-"}</span></p>
+  <hr>
+  <h4>指導内容</h4>
+  <p><b>療養の要点：</b><br>${result.guidance?.["療養の要点"] || "-"}</p>
+  <p><b>おすすめ薬膳食材：</b></p>
+  <ul>
+    ${(result.guidance?.["おすすめ薬膳食材"] || [])
+      .map(item => `<li>${item.name} — ${item.reason}</li>`)
+      .join("")}
+  </ul>
+`;
+
   }catch(err){
     document.getElementById("aiResult").innerHTML =
       `<div style="color:#b91c1c"><b>送信に失敗：</b>${String(err)}</div>`;
