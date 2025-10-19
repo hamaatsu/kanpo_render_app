@@ -1,343 +1,194 @@
-# -*- coding: utf-8 -*-
-import os
-import json
-import re
-import hashlib
-import random
-from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, flash
-
-# ---------- Config ----------
-MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")  # 任意（Azure/OpenRouter等）
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ===== 必要なimport =====
+import os, json, traceback
+from flask import Flask, render_template, request, jsonify
+from openai import OpenAI
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret")  # セッション/flash用
+client = OpenAI()
 
-# === inventory.json の読み込み ===
-APP_DIR = Path(__file__).resolve().parent
-INVENTORY_PATH = APP_DIR / "inventory.json"
-try:
-    with INVENTORY_PATH.open("r", encoding="utf-8") as f:
-        _inv = json.load(f)
-    ALLOWED_FORMULAS = list(dict.fromkeys(_inv.get("allowed_formulas", [])))
-except Exception:
-    ALLOWED_FORMULAS = []
-
-# ---------- OpenAI client (new SDK) ----------
-try:
-    from openai import OpenAI
-    _client_kwargs = {"api_key": OPENAI_API_KEY}
-    if OPENAI_BASE_URL:
-        _client_kwargs["base_url"] = OPENAI_BASE_URL
-    client = OpenAI(**_client_kwargs)
-except Exception:
-    client = None
-
-
-# ---------- Prompt builder ----------
-SYSTEM_PROMPT = """あなたは経験豊富な日本の漢方薬剤師です。出力は常に日本語。
-
-入力として患者のフォーム回答（年齢、性別、主症状、急性/慢性、気血水、八綱分類、舌診、脈診、生活・安全情報）が与えられます。
-
-【方針（重要）】
-- 症状優先/証優先の重み付けを数値で行う：
-  - 急性：症状70％・証30％
-  - 慢性：症状30％・証70％
-- 候補3剤の内訳：
-  1つ目＝症状優先、2つ目＝証優先、3つ目＝折衷（総合点上位）
-- 日本国内で使用可能な薬局製剤または保険適応漢方処方「のみ」を用いる。中医学の通称や国外限定名は不可。曖昧なら日本で一般的な名称に置き換える。
-- 安全性（妊娠・授乳・併用薬・アレルギー）に抵触する処方は候補から除外し、その旨を safety_notes に明記。
-- 候補に挙げてよい方剤は user から渡す allowed_formulas の中だけです。必ずその中から選び、名称は完全一致で出力してください。
-
-【追加制約】
-- 「症状優先」に選ぶ候補は、**日本の保険適応または一般的効能効果として主訴に合致**する処方のみとする（例：頭痛に適応がない処方は不可）。
-- 「証優先」「折衷」は、臨床的妥当性を短く明記する。
-- 各候補には "japan_indication_ok": true|false と "age_sex_considerations": "〜" を必ず含める。
-- トップレベルに "patient_meta": {"name":"","age":0,"gender":""} を必ず含める（年齢・性別の考慮を反映）。
-
-【あなたのタスク】
-1) フォーム回答を根拠に、主症状と急性/慢性を再確認（矛盾があれば指摘）。
-2) 気血水を6分類（気虚/気滞/血虚/瘀血/水滞/津液不足）で判定（正常は出力から除外してよい）。
-3) 八綱分類（表or裏、寒or熱、虚or実）を判定し、「表熱実」などのラベルを生成。
-4) 処方スコアリング（0〜1）：
-   - symptom_fit（主症状・急性/慢性に対する一致度）
-   - constitution_fit（気血水＋八綱に対する一致度）
-   - safety（禁忌がなければ1.0、禁忌があれば0.0）
-   - total = symptom_fit*症状重み + constitution_fit*証重み
-   - 各候補に "priority_basis": 「症状優先」「証優先」「折衷」を付与。
-5) 総合点の高いものから3剤を選び、各剤に100〜200文字の根拠（症状＋証の両面）を記載。3剤は上記内訳ルールを満たすこと。
-6) 候補3つから1剤に絞る薬剤師向けアドバイス（季節/症状強度/体力/安全性の観点）。
-7) 薬膳材料を5つ提案（各30文字以内、国内で入手容易）。
-8) ツボのアドバイス（80〜100文字、経穴名＋位置＋押し方を1段落）。
-9) アロマのアドバイス（80〜100文字、精油3種・香り特性・使い方を1段落）。
-10) 妊娠・授乳、既往薬、アレルギー等からの禁忌/注意があれば safety_notes に簡潔に明記。
-11) すべてを以下のJSONで返答（余計な文章・コードブロックや解説は不要）:
-
-{
-  "patient_meta": {"name":"", "age":0, "gender":""},
-  "main_symptom": "",
-  "acute_or_chronic": "急性|慢性",
-  "kiketsusui": ["気滞","血虚"],
-  "hakkou": {"hyou_ura":"表|裏", "kan_netsu":"寒|熱", "kyo_jitsu":"虚|実", "label":"表熱実"},
-  "kampo_candidates": [
-    {
-      "name":"", 
-      "rationale":"", 
-      "scores":{"symptom_fit":0.00,"constitution_fit":0.00,"safety":1.00,"total":0.00},
-      "priority_basis":"症状優先",
-      "japan_indication_ok": true,
-      "age_sex_considerations": ""
-    },
-    {
-      "name":"", 
-      "rationale":"", 
-      "scores":{"symptom_fit":0.00,"constitution_fit":0.00,"safety":1.00,"total":0.00},
-      "priority_basis":"証優先",
-      "japan_indication_ok": false,
-      "age_sex_considerations": ""
-    },
-    {
-      "name":"", 
-      "rationale":"", 
-      "scores":{"symptom_fit":0.00,"constitution_fit":0.00,"safety":1.00,"total":0.00},
-      "priority_basis":"折衷",
-      "japan_indication_ok": false,
-      "age_sex_considerations": ""
-    }
-  ],
-  "pharmacist_selection_advice": "",
-  "yakuzen_ingredients": [
-    {"name":"", "effect":""},
-    {"name":"", "effect":""},
-    {"name":"", "effect":""},
-    {"name":"", "effect":""},
-    {"name":"", "effect":""}
-  ],
-  "acupoints_advice": "",
-  "aroma_advice": "",
-  "safety_notes": "",
-  "confidence": 0.85
-}
-"""
-
-def build_user_prompt(form_data: dict) -> str:
-    # 氏名・年齢・性別を明示し、AIが確実に参照できるようにする
-    patient_meta = {
-        "name": form_data.get("name") or form_data.get("氏名") or "",
-        "age": int(form_data.get("age") or 0),
-        "gender": form_data.get("gender") or form_data.get("sex") or form_data.get("性別") or "",
-    }
-    payload = {
-        "form": form_data,
-        "patient_meta": patient_meta,
-        "allowed_formulas": ALLOWED_FORMULAS,
-        "instruction": (
-            "候補に挙げてよい方剤は allowed_formulas の中だけ。"
-            "名称は完全一致で返答。"
-            "3剤の内訳ルール（症状優先/証優先/折衷）を必ず満たす。"
-            "症状優先は日本の適応に合致すること。"
-        )
-    }
-    return "以下のJSONを読み取り、タスクを実行してください。\n\n" + json.dumps(payload, ensure_ascii=False, indent=2)
-
-
-def call_openai(messages):
-    if client is None or not OPENAI_API_KEY:
-        raise RuntimeError("OpenAIクライアントが初期化されていません。OPENAI_API_KEY を環境変数に設定してください。")
-    # Chat Completions API
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=messages,
-    )
-    return resp.choices[0].message.content
-
-
-def safe_json_extract(s: str):
-    """モデル出力から最初のJSONオブジェクトを抽出してparseする。"""
-    if not s:
-        return None
-    s_clean = re.sub(r"^```(?:json)?|```$", "", s.strip(), flags=re.MULTILINE)
-    match = re.search(r"\{.*\}", s_clean, flags=re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except Exception:
-            pass
-    try:
-        return json.loads(s_clean)
-    except Exception:
-        return None
-
-
-def filter_candidates_to_allowlist(parsed: dict, allowed: list[str]):
-    """LLM出力の候補を allowlist でふるいにかける。除外された名前を返す。"""
-    if not parsed or not isinstance(parsed, dict):
-        return parsed, []
-    if not allowed:
-        return parsed, []
-
-    dropped = []
-    cands = parsed.get("kampo_candidates")
-    if isinstance(cands, list):
-        kept = []
-        for c in cands:
-            name = (c or {}).get("name")
-            if name in allowed:
-                kept.append(c)
-            else:
-                if name:
-                    dropped.append(name)
-        parsed["kampo_candidates"] = kept
-    return parsed, dropped
-
-
-# ---------- Routes ----------
+# ====== トップ画面（今の index.html を返す）======
 @app.route("/", methods=["GET"])
 def index():
     return render_template("index.html")
 
+# ====== 開発中のキャッシュ無効化（任意。不要なら削除OK）======
+@app.after_request
+def add_no_cache_headers(resp):
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
+# ====== 許可方剤（allowlist）の読み込み。inventory.json があれば優先 ======
+def load_allowed_formulas():
+    try:
+        with open("inventory.json", "r", encoding="utf-8") as f:
+            obj = json.load(f)
+            arr = obj.get("allowed_formulas") or obj.get("allowed") or []
+            if isinstance(arr, list) and arr:
+                return arr
+    except Exception:
+        pass
+    # フォールバック（あなたが以前提示した104処方）
+    return [
+        "安中散料","黄連解毒湯","黄連湯","黄耆建中湯","温経湯","温清飲","加味帰脾湯","加味逍遙散料",
+        "葛根湯","甘麦大棗湯","帰脾湯","牛車腎気丸料","啓脾湯","桂枝加黄耆湯","桂枝加竜骨牡蛎湯",
+        "桂枝加苓朮附湯","桂枝加芍薬大黄湯","桂枝加芍薬湯","桂枝人参湯","桂枝湯","桂枝茯苓丸料",
+        "桂枝茯苓丸料加ヨク苡仁","荊芥連翹湯","五積散料","五淋散料","五苓散料","呉茱萸湯","香蘇散料",
+        "三黄瀉心湯","三物黄_湯","酸棗仁湯","四逆散料","四物湯","滋陰降火湯","滋陰至宝湯","治打撲一方",
+        "七物降下湯","柴胡加竜骨牡蛎湯","柴胡桂枝乾姜湯","柴胡桂枝湯","柴朴湯","柴苓湯","十全大補湯",
+        "十味敗毒湯","潤腸湯","女神散料","小建中湯","小柴胡湯","小承気湯","小青竜湯","消風散料",
+        "神秘湯","人参湯","人参養栄湯","清暑益気湯","清上防風湯","清上ケン痛湯","清心蓮子飲","清肺湯",
+        "疎経活血湯","大黄牡丹皮湯","大建中湯","大柴胡湯","知柏地黄丸料","竹茹温胆湯","猪苓湯",
+        "猪苓湯合四物湯","調胃承気湯","通導散料","釣藤散料","桃核承気湯","当帰飲子","当帰建中湯",
+        "当帰四逆加呉茱萸生姜湯","当帰湯","当帰芍薬散料","二陳湯","二朮湯","白虎加人参湯","麦門冬湯",
+        "八味地黄丸料","半夏厚朴湯","半夏白朮天麻湯","半夏瀉心湯","平胃散料","補中益気湯","防風通聖散料",
+        "防已黄耆湯","麻子仁丸料","抑肝散料","抑肝散料加陳皮半夏","竜胆瀉肝湯","苓桂朮甘湯","苓姜朮甘湯",
+        "六君子湯","炙甘草湯","芍薬甘草湯","茵陳五苓散料","茵陳蒿湯","茯苓飲合半夏厚朴湯",
+        "キュウ帰調血飲","キュウ帰調血飲第一加減","キュウ帰膠艾湯","ヨク苡仁湯"
+    ]
+
+ALLOWED = load_allowed_formulas()
+
+# ====== SYSTEM プロンプト（日本語・JSON厳守・ハルシ防止）======
+SYSTEM_PROMPT = """
+あなたは薬局の漢方相談を支援するAI薬剤師です。下記の制約を厳守して回答してください。
+
+【出力形式】
+- 必ず JSON 1オブジェクトのみを返す（前後の説明文やコードブロックは禁止）
+- スキーマ：
+{
+  "formula_symptom": {"name": "方剤名", "reason": "120〜200字の根拠"},
+  "formula_sho":     {"name": "方剤名", "reason": "120〜200字の根拠"},
+  "formula_mixed":   {"name": "方剤名", "reason": "120〜200字の根拠"},
+  "pharmacist_advice": "患者指導コメント（生活・服薬・注意点など200〜300字）"
+}
+
+【選方ルール】
+- 候補は必ず allowlist（allowed_formulas）内から選ぶ。リスト外は選ばない。
+- 1つ目（formula_symptom）は症状（主訴）への適合を最優先。
+- 2つ目（formula_sho）は証（体質％）への適合を最優先。
+- 3つ目（formula_mixed）は症状・証・安全性・体力のバランスで折衷案。
+- 同一患者に3剤すべてが全く同じになることは避ける（重複回避）。
+- それぞれの reason には「症状のキーワード」「証（気虚・気滞・瘀血・水滞・陰陽など）」「安全面の配慮」を簡潔に含める。
+- 指導コメントには、生活指導（食事・睡眠・冷え/のぼせ対策）、服薬タイミング、想定副作用/禁忌（妊娠・出血傾向など）を含める。
+
+【安全】
+- 妊娠/授乳/抗凝固薬/消化性潰瘍などのリスクが疑われる場合は、reason/コメント内で簡潔に注意喚起。
+- 迷う場合はよりマイルドな方剤を優先。
+
+【厳守】
+- JSON以外の文字を出力しない。
+"""
+
+# ====== ユーザー（患者）情報 → プロンプト整形 ======
+def build_user_prompt(payload: dict) -> str:
+    """
+    フロントから送られる JSON:
+    {
+      "name": "...", "age": 34, "gender": "女性",
+      "chief": {
+        "selections": [
+          {"category":"婦人科・月経","symptoms":["月経痛","PMS"]},
+          {"category":"痛み・筋骨格","symptoms":["肩こり"]}
+        ],
+        "detail": "自由記入..."
+      },
+      "constitution": {"気虚体質":40, "血虚体質":20, ...}  # 任意（無い場合あり）
+    }
+    """
+    name = payload.get("name") or ""
+    age = payload.get("age")
+    gender = payload.get("gender") or ""
+
+    # 主訴（カテゴリ別）
+    chief = payload.get("chief") or {}
+    selections = chief.get("selections") or []
+    detail = (chief.get("detail") or "").strip()
+
+    # 体質％
+    constitution = payload.get("constitution") or {}
+
+    # 人が読みやすい文章も用意（モデルに状況を伝えるため）
+    chief_lines = []
+    for item in selections:
+        cat = item.get("category") or ""
+        syms = item.get("symptoms") or []
+        if syms:
+            chief_lines.append(f"- {cat}: {', '.join(syms)}")
+    chief_text = "\n".join(chief_lines) if chief_lines else "-（未選択）"
+
+    const_lines = [f"- {k}: {v}%" for k, v in constitution.items()]
+    const_text = "\n".join(const_lines) if const_lines else "-（データなし）"
+
+    # allowed_formulas は明示的に与えて、モデルの選択肢を限定
+    allow_json = json.dumps(ALLOWED, ensure_ascii=False)
+
+    user_prompt = f"""
+【患者情報】
+- 氏名: {name}
+- 年齢: {age}
+- 性別: {gender}
+
+【主訴（複数カテゴリ可）】
+{chief_text}
+- 自由記入: {detail}
+
+【証（体質％）】
+{const_text}
+
+【allowed_formulas（この中からのみ選ぶ）】
+{allow_json}
+
+上記の情報をもとに、SYSTEM仕様どおりの JSON を1オブジェクトで返してください。
+""".strip()
+
+    return user_prompt
+
+# ====== OpenAI 呼び出し ======
+def call_openai(messages):
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    resp = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0.0,
+        top_p=1.0,
+        response_format={"type": "json_object"},
+        max_tokens=900
+    )
+    return resp.choices[0].message.content
+
+def safe_json(content: str):
+    try:
+        return json.loads(content)
+    except Exception:
+        return {"error": "LLMのJSON解析に失敗しました", "raw": content}
+
+# ====== /analyze：フロントからの送信を受け→3剤＋コメントを返す ======
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    # JSON で送られてきた場合も受け取れるようにする
+    # JSON/フォームの両対応
     try:
-        if request.is_json:
-            data = request.get_json()
-        else:
-            data = request.form.to_dict()
+        data = request.get_json() if request.is_json else request.form.to_dict()
     except Exception as e:
         return jsonify({"error": f"データ受信エラー: {str(e)}"}), 400
 
-    # データを共通フォーマットに整える
-    if isinstance(data, dict):
-        normalized = data
-    else:
-        normalized = {}
-    # ここから下は今まで通り（AI呼び出し処理など）
     try:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(normalized)},
+            {"role": "user", "content": build_user_prompt(data)},
         ]
-
         raw = call_openai(messages)
-        parsed = safe_json_extract(raw)
-        if not parsed:
-            flash("AIの出力をJSONとして解釈できませんでした。生出力を表示します。", "warning")
-            return render_template("detail.html", raw_output=raw, result=None, form=normalized)
+        parsed = safe_json(raw)
 
-        # allowlist 安全網
-        parsed, dropped = filter_candidates_to_allowlist(parsed, ALLOWED_FORMULAS)
-        if dropped:
-            flash("許可リスト外の処方を除外しました: " + "、".join(dropped), "warning")
-        if not parsed.get("kampo_candidates"):
-            flash("候補が全てリスト外だったか、生成に失敗しました。主訴や証の記載をもう少し詳しくして再度お試しください。", "warning")
+        # 念のため allowed 外の方剤をフィルタ（安全網）
+        if isinstance(parsed, dict):
+            for key in ("formula_symptom","formula_sho","formula_mixed"):
+                if parsed.get(key) and parsed[key].get("name") not in ALLOWED:
+                    parsed[key]["name"] = ""
+                    parsed[key]["reason"] = "allowed_formulas外だったため無効化"
 
-        # patient_meta が欠けていたらフォームから補完（画面表示のため）
-        pm = parsed.get("patient_meta") or {}
-        if not isinstance(pm, dict):
-            pm = {}
-        if not pm.get("name"):   pm["name"] = normalized.get("name") or normalized.get("氏名") or ""
-        if not pm.get("age"):    pm["age"] = int(normalized.get("age") or 0)
-        if not pm.get("gender"): pm["gender"] = normalized.get("gender") or normalized.get("sex") or normalized.get("性別") or ""
-        parsed["patient_meta"] = pm
-
-               # --- 主訴優先は必ず適応OKに揃える（サーバ側の保険） ---
-        cands = parsed.get("kampo_candidates") or []
-
-        # ★ ここから追加：104種から不足分を必ず補完して3枠埋める（決定論的）
-        def _need_categories(existing):
-            have = { (c or {}).get("priority_basis") for c in existing }
-            order = ["症状優先", "証優先", "折衷"]
-            return [cat for cat in order if cat not in have]
-
-        # 既存候補を名前重複なく丸める
-        dedup = []
-        seen = set()
-        for c in cands:
-            n = (c or {}).get("name")
-            if n and (n not in seen):
-                dedup.append(c)
-                seen.add(n)
-        cands = dedup
-
-        # 3件未満なら 104 から決定論的に補完
-        if len(cands) < 3:
-            import hashlib, random
-            seed_src = json.dumps(normalized, ensure_ascii=False, sort_keys=True)
-            h = hashlib.sha256(seed_src.encode("utf-8")).hexdigest()
-            rnd = random.Random(int(h[:16], 16))
-
-            pool = [x for x in ALLOWED_FORMULAS if x not in { (c or {}).get("name") for c in cands }]
-            rnd.shuffle(pool)
-
-            for cat in _need_categories(cands):
-                if not pool:
-                    break
-                pick = pool.pop(0)
-                cands.append({
-                    "name": pick,
-                    "rationale": "在庫リストから自動補完。詳細根拠は薬剤師の臨床判断で確認してください。",
-                    "scores": {"symptom_fit":0.0, "constitution_fit":0.0, "safety":1.0, "total":0.5},
-                    "priority_basis": cat,
-                    "japan_indication_ok": True if cat == "症状優先" else False,
-                    "age_sex_considerations": ""
-                })
-
-            while len(cands) < 3 and pool:
-                cat = ["症状優先","証優先","折衷"][len(cands)] if len(cands) < 3 else "折衷"
-                pick = pool.pop(0)
-                cands.append({
-                    "name": pick,
-                    "rationale": "在庫リストから自動補完。",
-                    "scores": {"symptom_fit":0.0, "constitution_fit":0.0, "safety":1.0, "total":0.5},
-                    "priority_basis": cat,
-                    "japan_indication_ok": True if cat == "症状優先" else False,
-                    "age_sex_considerations": ""
-                })
-
-        # 先頭（症状優先）が必ず適応OKになるように最終チェック
-        sym_idx = next((i for i, c in enumerate(cands) if (c or {}).get("priority_basis") == "症状優先"), None)
-        if sym_idx is not None:
-            if not bool((cands[sym_idx] or {}).get("japan_indication_ok")):
-                swap_idx = next((i for i, c in enumerate(cands) if bool((c or {}).get("japan_indication_ok"))), None)
-                if swap_idx is not None:
-                    cands[0], cands[swap_idx] = cands[swap_idx], cands[0]
-                    cands[0]["priority_basis"] = "症状優先"
-
-        parsed["kampo_candidates"] = cands[:3]
-        # ★ ここまで追加
-
-
-        # 「症状優先」の候補を探す
-        sym_idx = next((i for i, c in enumerate(cands) if (c or {}).get("priority_basis") == "症状優先"), None)
-        if sym_idx is not None:
-            sym_ok = bool((cands[sym_idx] or {}).get("japan_indication_ok"))
-            if not sym_ok:
-                # 適応OKの候補を探して先頭に
-                swap_idx = next((i for i, c in enumerate(cands) if bool((c or {}).get("japan_indication_ok"))), None)
-                if swap_idx is not None:
-                    cands[0], cands[swap_idx] = cands[swap_idx], cands[0]
-                    cands[0]["priority_basis"] = "症状優先"
-                    parsed["kampo_candidates"] = cands
-                else:
-                    flash("注意：主訴に対する日本の適応に合致する候補が得られませんでした。入力内容をご確認ください。", "warning")
-
-        return render_template("detail.html", result=parsed, raw_output=None, form=normalized)
-
+        return jsonify(parsed)
     except Exception as e:
-        flash(f"エラー: {e}", "danger")
-        return redirect(url_for("index"))
-
-
-# health check
-@app.route("/health")
-def health():
-    return {"status": "ok"}
-
-
-if __name__ == "__main__":
-    # 本番は gunicorn を推奨（Render想定）
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8000)), debug=True)
+        traceback.print_exc()
+        return jsonify({"error": f"サーバ処理エラー: {str(e)}"}), 500
