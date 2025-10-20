@@ -14,33 +14,33 @@
   .cat h3{margin:0 0 6px 0;font-size:16px}
   .sym{display:block;margin:4px 0}
   label.inline{display:flex;gap:8px;align-items:center}
-  input[type="text"],input[type="number"],textarea,select{
-    border:1px solid #d1d5db;border-radius:8px;padding:6px 8px;width:100%;box-sizing:border-box
-  }
-  textarea{resize:vertical}
+  select, textarea, input[type=text], input[type=number]{width:100%;padding:8px;border:1px solid #ccc;border-radius:8px;}
+  button{padding:10px 16px;border:0;border-radius:10px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;margin-top:12px}
+  button.secondary{background:#111827}
   .muted{color:#6b7280;font-size:12px}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   .row > *{flex:1 1 auto}
   .cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:12px}
   .card{border:1px solid #e5e7eb;border-radius:12px;padding:10px}
   .card .big{font-size:26px;font-weight:700}
-  .flex{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
   .chip{display:inline-flex;align-items:center;padding:4px 8px;border:1px solid #e5e7eb;border-radius:999px;background:#f9fafb}
-  button{background:#2563eb;color:white;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
-  button.secondary{background:#111827}
-  .footer-note{font-size:12px;color:#6b7280;margin-top:6px}
   @media (max-width:980px){ .grid3,.grid4,.cards{grid-template-columns:1fr} }
 
-  /* Thinking overlay */
+  /* === Thinking Overlay / Spinner === */
   #thinkingOverlay{
     position:fixed; inset:0; background:rgba(255,255,255,.6);
     display:none; align-items:center; justify-content:center; z-index:9999;
     backdrop-filter:saturate(120%) blur(2px);
   }
-  .spinner{ width:54px; height:54px; border-radius:50%;
-    border:6px solid #e5e7eb; border-top-color:#2563eb; animation:spin 1s linear infinite; }
+  .spinner{
+    width:54px; height:54px; border-radius:50%;
+    border:6px solid #e5e7eb; border-top-color:#2563eb;
+    animation:spin 1s linear infinite;
+  }
   #thinkingText{ margin-top:12px; color:#374151; font-weight:700; text-align:center }
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* === ボタンの押下／無効化 表現 === */
   button:active{ transform:translateY(1px); filter:saturate(115%); }
   button[disabled]{ opacity:.6; cursor:not-allowed; }
 </style>
@@ -53,9 +53,9 @@
   <h2>基本情報</h2>
   <div class="grid3">
     <label class="inline">お名前：<input type="text" id="name"></label>
-    <label class="inline">年齢：<input type="number" id="age" style="width:120px">歳</label>
+    <label class="inline">年齢：<input type="number" id="age" style="max-width:140px">歳</label>
     <label class="inline">性別：
-      <select id="gender" style="max-width:180px">
+      <select id="gender" style="max-width:200px">
         <option value="">未選択</option>
         <option>女性</option>
         <option>男性</option>
@@ -66,23 +66,192 @@
   <div class="muted">※ 月経項目は女性該当者のみ使用します</div>
 </div>
 
-<!-- 主訴（カテゴリ複数可・既存構成） -->
+<!-- 主訴（大分類をまたいで複数選択可）【元の内容を維持】 -->
 <div class="sec">
-  <h2>主訴（複数カテゴリ可）</h2>
+  <h2>主訴（大分類をまたいで複数選択可）</h2>
+  <p class="muted">該当するものをすべてチェックしてください。複数カテゴリの併用可（例：生理痛＋PMS＋肩こり）。</p>
+
   <div class="grid4">
-    <!-- ※ 既存の主訴カテゴリはそのまま（省略：ここは元のファイルと同一です） -->
-    <!-- 例：婦人科・月経、痛み・筋骨格、睡眠・神経、皮膚・アレルギー、呼吸器、消化器、循環器、泌尿器、耳鼻、眼科、口腔・歯、全身状態 など -->
-    <!-- 既存のチェックボックス群（data-cat付き）は変更していません -->
+    <!-- 消化器・便通 -->
+    <div class="cat"><h3>消化器・便通</h3>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="便秘"> 便秘</label>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="下痢"> 下痢</label>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="食欲不振"> 食欲不振</label>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="胃もたれ"> 胃もたれ</label>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="胸やけ"> 胸やけ</label>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="腹部膨満感"> 腹部膨満感</label>
+      <label class="sym"><input type="checkbox" data-cat="消化器・便通" value="過敏性腸症候群"> 過敏性腸症候群</label>
+    </div>
+
+    <!-- 循環・むくみ -->
+    <div class="cat"><h3>循環・むくみ</h3>
+      <label class="sym"><input type="checkbox" data-cat="循環・むくみ" value="むくみ"> むくみ</label>
+      <label class="sym"><input type="checkbox" data-cat="循環・むくみ" value="立ちくらみ"> 立ちくらみ</label>
+      <label class="sym"><input type="checkbox" data-cat="循環・むくみ" value="動悸"> 動悸</label>
+      <label class="sym"><input type="checkbox" data-cat="循環・むくみ" value="高血圧傾向"> 高血圧傾向</label>
+      <label class="sym"><input type="checkbox" data-cat="循環・むくみ" value="冷え"> 冷え</label>
+      <label class="sym"><input type="checkbox" data-cat="循環・むくみ" value="ほてり"> ほてり</label>
+    </div>
+
+    <!-- 体温・冷え -->
+    <div class="cat"><h3>体温・冷え</h3>
+      <label class="sym"><input type="checkbox" data-cat="体温・冷え" value="冷え性"> 冷え性</label>
+      <label class="sym"><input type="checkbox" data-cat="体温・冷え" value="のぼせ"> のぼせ</label>
+      <label class="sym"><input type="checkbox" data-cat="体温・冷え" value="手足が冷たい"> 手足が冷たい</label>
+      <label class="sym"><input type="checkbox" data-cat="体温・冷え" value="手足がほてる"> 手足がほてる</label>
+    </div>
+
+    <!-- 呼吸器 -->
+    <div class="cat"><h3>呼吸器</h3>
+      <label class="sym"><input type="checkbox" data-cat="呼吸器" value="咳"> 咳</label>
+      <label class="sym"><input type="checkbox" data-cat="呼吸器" value="痰"> 痰</label>
+      <label class="sym"><input type="checkbox" data-cat="呼吸器" value="鼻水"> 鼻水</label>
+      <label class="sym"><input type="checkbox" data-cat="呼吸器" value="鼻づまり"> 鼻づまり</label>
+      <label class="sym"><input type="checkbox" data-cat="呼吸器" value="花粉症"> 花粉症</label>
+      <label class="sym"><input type="checkbox" data-cat="呼吸器" value="風邪をひきやすい"> 風邪をひきやすい</label>
+    </div>
+
+    <!-- 皮膚・アレルギー -->
+    <div class="cat"><h3>皮膚・アレルギー</h3>
+      <label class="sym"><input type="checkbox" data-cat="皮膚・アレルギー" value="乾燥肌"> 乾燥肌</label>
+      <label class="sym"><input type="checkbox" data-cat="皮膚・アレルギー" value="湿疹"> 湿疹</label>
+      <label class="sym"><input type="checkbox" data-cat="皮膚・アレルギー" value="かゆみ"> かゆみ</label>
+      <label class="sym"><input type="checkbox" data-cat="皮膚・アレルギー" value="吹き出物"> 吹き出物</label>
+      <label class="sym"><input type="checkbox" data-cat="皮膚・アレルギー" value="にきび"> にきび</label>
+      <label class="sym"><input type="checkbox" data-cat="皮膚・アレルギー" value="肌荒れ"> 肌荒れ</label>
+    </div>
+
+    <!-- 痛み・筋骨格 -->
+    <div class="cat"><h3>痛み・筋骨格</h3>
+      <label class="sym"><input type="checkbox" data-cat="痛み・筋骨格" value="肩こり"> 肩こり</label>
+      <label class="sym"><input type="checkbox" data-cat="痛み・筋骨格" value="腰痛"> 腰痛</label>
+      <label class="sym"><input type="checkbox" data-cat="痛み・筋骨格" value="膝痛"> 膝痛</label>
+      <label class="sym"><input type="checkbox" data-cat="痛み・筋骨格" value="頭痛"> 頭痛</label>
+      <label class="sym"><input type="checkbox" data-cat="痛み・筋骨格" value="首の痛み"> 首の痛み</label>
+      <label class="sym"><input type="checkbox" data-cat="痛み・筋骨格" value="こむら返り"> こむら返り</label>
+    </div>
+
+    <!-- 睡眠・神経 -->
+    <div class="cat"><h3>睡眠・神経</h3>
+      <label class="sym"><input type="checkbox" data-cat="睡眠・神経" value="不眠"> 不眠</label>
+      <label class="sym"><input type="checkbox" data-cat="睡眠・神経" value="眠りが浅い"> 眠りが浅い</label>
+      <label class="sym"><input type="checkbox" data-cat="睡眠・神経" value="多夢"> 多夢</label>
+      <label class="sym"><input type="checkbox" data-cat="睡眠・神経" value="寝汗"> 寝汗</label>
+      <label class="sym"><input type="checkbox" data-cat="睡眠・神経" value="手足のしびれ"> 手足のしびれ</label>
+      <label class="sym"><input type="checkbox" data-cat="睡眠・神経" value="めまい"> めまい</label>
+    </div>
+
+    <!-- メンタル・自律神経 -->
+    <div class="cat"><h3>メンタル・自律神経</h3>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="イライラ"> イライラ</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="不安"> 不安</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="抑うつ"> 抑うつ</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="緊張"> 緊張</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="パニック"> パニック</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="動悸"> 動悸</label>
+    </div>
+
+    <!-- 体型・代謝 -->
+    <div class="cat"><h3>体型・代謝</h3>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="疲れやすい"> 疲れやすい</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="やせやすい"> やせやすい</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="太りやすい"> 太りやすい</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="むくみやすい"> むくみやすい</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="冷え太り"> 冷え太り</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="更年期太り"> 更年期太り</label>
+    </div>
+
+    <!-- 婦人科・月経 -->
+    <div class="cat"><h3>婦人科・月経</h3>
+      <label class="sym"><input type="checkbox" data-cat="婦人科・月経" value="月経痛"> 月経痛</label>
+      <label class="sym"><input type="checkbox" data-cat="婦人科・月経" value="PMS"> PMS</label>
+      <label class="sym"><input type="checkbox" data-cat="婦人科・月経" value="更年期障害"> 更年期障害</label>
+      <label class="sym"><input type="checkbox" data-cat="婦人科・月経" value="不妊"> 不妊</label>
+      <label class="sym"><input type="checkbox" data-cat="婦人科・月経" value="産後不調"> 産後不調</label>
+      <label class="sym"><input type="checkbox" data-cat="婦人科・月経" value="月経不順"> 月経不順</label>
+    </div>
+
+    <!-- 感染・炎症 -->
+    <div class="cat"><h3>感染・炎症</h3>
+      <label class="sym"><input type="checkbox" data-cat="感染・炎症" value="扁桃炎"> 扁桃炎</label>
+      <label class="sym"><input type="checkbox" data-cat="感染・炎症" value="副鼻腔炎"> 副鼻腔炎</label>
+      <label class="sym"><input type="checkbox" data-cat="感染・炎症" value="膀胱炎"> 膀胱炎</label>
+      <label class="sym"><input type="checkbox" data-cat="感染・炎症" value="にきび炎症"> にきび炎症</label>
+      <label class="sym"><input type="checkbox" data-cat="感染・炎症" value="皮膚の化膿"> 皮膚の化膿</label>
+      <label class="sym"><input type="checkbox" data-cat="感染・炎症" value="発熱傾向"> 発熱傾向</label>
+    </div>
+
+    <!-- 泌尿器 -->
+    <div class="cat"><h3>泌尿器</h3>
+      <label class="sym"><input type="checkbox" data-cat="泌尿器" value="頻尿"> 頻尿</label>
+      <label class="sym"><input type="checkbox" data-cat="泌尿器" value="残尿感"> 残尿感</label>
+      <label class="sym"><input type="checkbox" data-cat="泌尿器" value="排尿痛"> 排尿痛</label>
+      <label class="sym"><input type="checkbox" data-cat="泌尿器" value="夜間頻尿"> 夜間頻尿</label>
+      <label class="sym"><input type="checkbox" data-cat="泌尿器" value="尿漏れ"> 尿漏れ</label>
+      <label class="sym"><input type="checkbox" data-cat="泌尿器" value="むくみ"> むくみ</label>
+    </div>
+
+    <!-- 循環器（別立ても元のまま） -->
+    <div class="cat"><h3>循環器</h3>
+      <label class="sym"><input type="checkbox" data-cat="循環器" value="動悸"> 動悸</label>
+      <label class="sym"><input type="checkbox" data-cat="循環器" value="胸のドキドキ"> 胸のドキドキ</label>
+      <label class="sym"><input type="checkbox" data-cat="循環器" value="胸のつかえ"> 胸のつかえ</label>
+      <label class="sym"><input type="checkbox" data-cat="循環器" value="息切れ"> 息切れ</label>
+      <label class="sym"><input type="checkbox" data-cat="循環器" value="冷え"> 冷え</label>
+      <label class="sym"><input type="checkbox" data-cat="循環器" value="ほてり"> ほてり</label>
+    </div>
+
+    <!-- 疲労・倦怠感 -->
+    <div class="cat"><h3>疲労・倦怠感</h3>
+      <label class="sym"><input type="checkbox" data-cat="疲労・倦怠感" value="疲れやすい"> 疲れやすい</label>
+      <label class="sym"><input type="checkbox" data-cat="疲労・倦怠感" value="朝起きられない"> 朝起きられない</label>
+      <label class="sym"><input type="checkbox" data-cat="疲労・倦怠感" value="根気が続かない"> 根気が続かない</label>
+      <label class="sym"><input type="checkbox" data-cat="疲労・倦怠感" value="息切れ"> 息切れ</label>
+      <label class="sym"><input type="checkbox" data-cat="疲労・倦怠感" value="冷え"> 冷え</label>
+    </div>
+
+    <!-- 体型・代謝（重複は元のまま保持） -->
+    <div class="cat"><h3>体型・代謝</h3>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="冷え太り"> 冷え太り</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="更年期太り"> 更年期太り</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="やせやすい"> やせやすい</label>
+      <label class="sym"><input type="checkbox" data-cat="体型・代謝" value="太りやすい"> 太りやすい</label>
+    </div>
+
+    <!-- メンタル・自律神経（重複も元のまま） -->
+    <div class="cat"><h3>メンタル・自律神経</h3>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="不安"> 不安</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="抑うつ"> 抑うつ</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="緊張"> 緊張</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="イライラ"> イライラ</label>
+      <label class="sym"><input type="checkbox" data-cat="メンタル・自律神経" value="めまい"> めまい</label>
+    </div>
+
+    <!-- 小児 -->
+    <div class="cat"><h3>小児</h3>
+      <label class="sym"><input type="checkbox" data-cat="小児" value="小児夜泣き"> 小児夜泣き</label>
+      <label class="sym"><input type="checkbox" data-cat="小児" value="小児疳の虫"> 小児疳の虫</label>
+      <label class="sym"><input type="checkbox" data-cat="小児" value="夜尿症"> 夜尿症</label>
+      <label class="sym"><input type="checkbox" data-cat="小児" value="小児便秘"> 小児便秘</label>
+      <label class="sym"><input type="checkbox" data-cat="小児" value="虚弱体質"> 虚弱体質</label>
+      <label class="sym"><input type="checkbox" data-cat="小児" value="風邪をひきやすい"> 風邪をひきやすい</label>
+    </div>
+
+    <!-- その他 -->
+    <div class="cat"><h3>その他</h3>
+      <label class="sym"><input type="checkbox" data-cat="その他" value="該当なし"> 該当なし</label>
+    </div>
   </div>
 
   <label style="display:block;margin-top:10px;">自由記入（具体的な症状・経過・誘因/緩和因子など）</label>
   <textarea id="chief_detail" rows="3" placeholder="例：夜になると足が冷えて眠れない。便秘とむくみが続いている。"></textarea>
 </div>
 
-<!-- 証（体質チェック：チェック式・単一症状1文） -->
+<!-- 証（体質チェック：当てはまるものにチェック） -->
 <div class="sec">
   <h2>体質チェック（当てはまるものにチェック）</h2>
   <div class="grid3">
+    <!-- 感情・眠り -->
     <div class="cat">
       <h3>感情・眠り</h3>
       <label class="sym"><input type="checkbox" value="emo_irrit"> イライラしやすい</label>
@@ -96,6 +265,7 @@
       <label class="sym"><input type="checkbox" value="sleep_heat_insomnia"> 暑くて寝つけない</label>
     </div>
 
+    <!-- 体の傾向 -->
     <div class="cat">
       <h3>体の傾向</h3>
       <label class="sym"><input type="checkbox" value="tend_cold"> 寒がり／手足が冷える</label>
@@ -109,6 +279,7 @@
       <label class="sym"><input type="checkbox" value="tend_dyspnea"> 息切れしやすい</label>
     </div>
 
+    <!-- 体の状態 -->
     <div class="cat">
       <h3>体の状態</h3>
       <label class="sym"><input type="checkbox" value="stiff_shoulder"> 肩や首がこりやすい</label>
@@ -123,6 +294,7 @@
       <label class="sym"><input type="checkbox" value="night_sweat"> 夜に寝汗をかく</label>
     </div>
 
+    <!-- 舌・口・目 -->
     <div class="cat">
       <h3>舌・口・目</h3>
       <label class="sym"><input type="checkbox" value="t_pale"> 舌が白っぽい</label>
@@ -136,6 +308,7 @@
       <label class="sym"><input type="checkbox" value="eye_red"> 目が充血しやすい</label>
     </div>
 
+    <!-- 消化・便通・食欲 -->
     <div class="cat">
       <h3>消化・便通・食欲</h3>
       <label class="sym"><input type="checkbox" value="poor_appetite"> 食欲が落ちやすい</label>
@@ -147,6 +320,7 @@
       <label class="sym"><input type="checkbox" value="alt_diarrhea_constipation"> 下痢と便秘をくり返す</label>
     </div>
 
+    <!-- 月経（該当者のみ） -->
     <div class="cat">
       <h3>月経（該当者のみ）</h3>
       <label class="sym"><input type="checkbox" value="m_cycle_short"> 月経周期が短い（25日以内）</label>
@@ -172,16 +346,16 @@
   <div id="aiResult" style="margin-top:20px;"></div>
 </div>
 
-<!-- 結果表示 -->
+<!-- 判定結果 -->
 <div class="sec">
   <h2>判定結果</h2>
   <div class="row"><span id="who" class="chip">対象者：未入力</span><span id="chief_out" class="chip">主訴：未選択</span></div>
   <div class="cards" id="cards"></div>
-  <div class="footer-note">※ 体質スコア（0〜100）：高いほどその体質傾向が強いことを示します</div>
+  <div class="muted">※ 体質スコア（0〜100）：高いほどその体質傾向が強いことを示します</div>
 </div>
 
 <script>
-/* ==== 主訴（カテゴリ横断）収集は既存のまま ==== */
+// ====== 主訴の収集（大分類をまたいで複数） ======
 function collectChiefSelections(){
   const checked = Array.from(document.querySelectorAll('input[type="checkbox"][data-cat]:checked'));
   const byCat = new Map();
@@ -191,14 +365,18 @@ function collectChiefSelections(){
     if(!byCat.has(cat)) byCat.set(cat, []);
     byCat.get(cat).push(val);
   });
+  // 画面表示用のテキスト
   const summary = Array.from(byCat.entries()).map(([cat, list])=>`${cat}：${list.join("・")}`);
+  // サーバ送信用（配列の配列）
   const selections = Array.from(byCat.entries()).map(([category, symptoms])=>({category, symptoms}));
   return {summaryText: summary.join(" ｜ "), selections};
 }
 
-/* ====== 証ロジック（MAP：症状→軸スコア） ====== */
+/* ====== 証ロジック（チェック→スコア） ======
+   軸：気虚 qi_xu, 気滞 qi_zhi, 血虚 xue_xu, 瘀血 yu_xue, 水滞 shui_tai, 熱 netsu, 寒 kan, 虚 kyo, 実 jitsu */
 const AXES = ["qi_xu","qi_zhi","xue_xu","yu_xue","shui_tai","netsu","kan","kyo","jitsu"];
 
+// 症状→加点（舌 t_* は後で1.5倍）。数値は臨床的寄与の目安。
 const MAP = {
   // 感情・眠り
   "emo_irrit":{qi_zhi:1,jitsu:0.5}, "emo_angry":{qi_zhi:1,jitsu:0.5},
@@ -244,6 +422,7 @@ const MAP = {
   "pms_breast_swelling":{qi_zhi:0.5}, "pms_irritability":{qi_zhi:0.5}, "pms_edema":{shui_tai:0.5}
 };
 
+// 証チェックの収集（data-cat 属性がないチェックのみ）
 function gatherSelectedSho(){
   return Array.from(document.querySelectorAll('input[type="checkbox"]:not([data-cat]):checked')).map(i=>i.value);
 }
@@ -263,7 +442,7 @@ function accumulate(ids){
   return s;
 }
 
-// 正規化：/5 で飽和抑制 → 0〜100（％を付けない）
+// 正規化：/5 で飽和抑制 → 0〜100（％は付けない）
 const norm = x => Math.max(0, Math.min(1, x/5));
 const score = x => Math.round(100*x);
 
@@ -313,7 +492,7 @@ document.getElementById('calc').onclick = ()=>{
     : `主訴：未選択（${detail||"詳細未記入"}）`;
 };
 
-/* ==== AI送信（バックエンドへ POST）==== */
+// ====== AI送信 ======
 document.getElementById("sendAI").onclick = async (ev)=>{
   const btn = ev.currentTarget;
   try{
@@ -324,6 +503,7 @@ document.getElementById("sendAI").onclick = async (ev)=>{
     const pairs = composite(s);
     const constitution = Object.fromEntries(pairs); // 0-100（点）
 
+    // 主訴（カテゴリ別）
     const checked = Array.from(document.querySelectorAll('input[type="checkbox"][data-cat]:checked'));
     const byCat = {};
     checked.forEach(ch=>{
@@ -339,7 +519,7 @@ document.getElementById("sendAI").onclick = async (ev)=>{
       age: document.getElementById('age').value,
       gender: document.getElementById('gender').value,
       chief: { selections, detail },
-      constitution
+      constitution // 0-100
     };
 
     const controller = new AbortController();
@@ -381,7 +561,7 @@ document.getElementById("sendAI").onclick = async (ev)=>{
   }
 };
 
-/* ==== Thinking Overlay ==== */
+// ====== Thinking Overlay ======
 function setLoading(isLoading, btn){
   const overlay = document.getElementById('thinkingOverlay');
   const calcBtn = document.getElementById('calc');
@@ -409,8 +589,8 @@ function setLoading(isLoading, btn){
 <!-- Thinking overlay -->
 <div id="thinkingOverlay" role="status" aria-live="polite" aria-busy="true">
   <div style="display:flex;flex-direction:column;align-items:center">
-    <div class="spinner"></div>
-    <div id="thinkingText">AIが処理中です…</div>
+    <div class="spinner" aria-hidden="true"></div>
+    <div id="thinkingText">AIが考えています…</div>
   </div>
 </div>
 
