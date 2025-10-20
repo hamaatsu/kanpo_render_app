@@ -29,7 +29,7 @@ def load_allowed_formulas():
                 return arr
     except Exception:
         pass
-    # フォールバック（あなたが以前提示した104処方）
+    # フォールバック（ご提示の104処方。名称は変更していません）
     return [
         "安中散料","黄連解毒湯","黄連湯","黄耆建中湯","温経湯","温清飲","加味帰脾湯","加味逍遙散料",
         "葛根湯","甘麦大棗湯","帰脾湯","牛車腎気丸料","啓脾湯","桂枝加黄耆湯","桂枝加竜骨牡蛎湯",
@@ -49,6 +49,8 @@ def load_allowed_formulas():
     ]
 
 ALLOWED = load_allowed_formulas()
+# 許可リストの厳格適用スイッチ（既定OFF=減らさない）
+ENFORCE_ALLOWED = os.getenv("ENFORCE_ALLOWED", "false").lower() == "true"
 
 # ====== SYSTEM プロンプト（日本語・JSON厳守・ハルシ防止）======
 SYSTEM_PROMPT = """
@@ -96,7 +98,6 @@ SYSTEM_PROMPT = """
 - JSON以外の文字を絶対に出力しない。
 """
 
-
 # ====== ユーザー（患者）情報 → プロンプト整形 ======
 def build_user_prompt(payload: dict) -> str:
     """
@@ -110,7 +111,7 @@ def build_user_prompt(payload: dict) -> str:
         ],
         "detail": "自由記入..."
       },
-      "constitution": {"気虚体質":40, "血虚体質":20, ...}  # 任意（無い場合あり）
+      "constitution": {"気虚体質":60, "血虚体質":40, ...}  # 0〜100 の体質スコア（任意）
     }
     """
     name = payload.get("name") or ""
@@ -122,10 +123,10 @@ def build_user_prompt(payload: dict) -> str:
     selections = chief.get("selections") or []
     detail = (chief.get("detail") or "").strip()
 
-    # 体質％
+    # 体質スコア（0〜100）
     constitution = payload.get("constitution") or {}
 
-    # 人が読みやすい文章も用意（モデルに状況を伝えるため）
+    # 人が読みやすい文章（モデルに状況を伝えるため）
     chief_lines = []
     for item in selections:
         cat = item.get("category") or ""
@@ -134,7 +135,8 @@ def build_user_prompt(payload: dict) -> str:
             chief_lines.append(f"- {cat}: {', '.join(syms)}")
     chief_text = "\n".join(chief_lines) if chief_lines else "-（未選択）"
 
-    const_lines = [f"- {k}: {v}%" for k, v in constitution.items()]
+    # ←← ここを“％”から「点」に変更
+    const_lines = [f"- {k}: {v}点" for k, v in constitution.items()]
     const_text = "\n".join(const_lines) if const_lines else "-（データなし）"
 
     # allowed_formulas は明示的に与えて、モデルの選択肢を限定
@@ -150,7 +152,7 @@ def build_user_prompt(payload: dict) -> str:
 {chief_text}
 - 自由記入: {detail}
 
-【証（体質％）】
+【証（体質スコア 0〜100）】
 {const_text}
 
 【allowed_formulas（この中からのみ選ぶ）】
@@ -197,8 +199,8 @@ def analyze():
         raw = call_openai(messages)
         parsed = safe_json(raw)
 
-        # 念のため allowed 外の方剤をフィルタ（安全網）
-        if isinstance(parsed, dict):
+        # 許可リスト外の処方を無効化するかはスイッチで制御（既定OFF）
+        if isinstance(parsed, dict) and ENFORCE_ALLOWED:
             for key in ("formula_symptom","formula_sho","formula_mixed"):
                 if parsed.get(key) and parsed[key].get("name") not in ALLOWED:
                     parsed[key]["name"] = ""
@@ -208,3 +210,6 @@ def analyze():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": f"サーバ処理エラー: {str(e)}"}), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), debug=True)
