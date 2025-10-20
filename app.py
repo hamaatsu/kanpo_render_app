@@ -177,7 +177,7 @@ def call_openai(messages):
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
-        temperature=0.0,
+        temperature=0.3,
         top_p=1.0,
         response_format={"type": "json_object"},
         max_tokens=900
