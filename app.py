@@ -57,50 +57,65 @@ SYSTEM_PROMPT = """
 あなたは薬剤師であり、漢方の専門家として問診データをもとに、
 症状主体・証主体・折衷案の3つの観点から最適な漢方薬を提案してください。
 
-出力は必ず **有効なJSON形式のみ** で返してください。
-説明文や補足文、日本語の前置きなどは一切出力してはいけません。
-【厳守】JSON以外の文字を出力しない。
+【出力形式（厳守）】
+- 出力は **有効なJSONオブジェクト1個のみ**。前後に説明文や余分な文字を一切出力しない。
+- 処方名は **allowed_formulas に含まれる文字列をそのまま** 使用する（表記ゆれ・別名・省略は禁止）。
 
-出力フォーマットは以下の通りです。
-
+【出力スキーマ】
 {
   "formula_symptom": {
     "name": "症状に基づく最適な漢方薬名（allowed_formulasから選ぶ）",
-    "reason": "なぜそれが選ばれたのか。患者の証と症状の両方を踏まえて具体的に説明。例：『あなたの証は気滞で、ストレスや胸のつかえがあるため、気の巡りを整える加味逍遙散を選びました。』妊婦禁忌の場合のみ『妊婦禁忌』と明記。",
+    "reason": "患者の症状・証・上位軸（あれば）との対応を具体的に説明。妊婦禁忌の場合のみ『妊婦禁忌』と明記。",
     "is_contraindicated_pregnancy": true または false
   },
   "formula_sho": {
-    "name": "証（体質）に基づく最適な漢方薬名（allowed_formulasから選ぶ）",
-    "reason": "体質判定結果をもとに、どのような証に対応しているか、なぜこの処方が合うのかを具体的に説明。例：『あなたの証は血虚で、顔色の悪さや疲れやすさがあるため、血を補う四物湯を選びました。』妊婦禁忌の場合のみ『妊婦禁忌』と明記。",
+    "name": "証（体質スコア）に基づく最適な漢方薬名（allowed_formulasから選ぶ）",
+    "reason": "体質スコアとの対応を具体的に説明。妊婦禁忌の場合のみ『妊婦禁忌』と明記。",
     "is_contraindicated_pregnancy": true または false
   },
   "formula_mixed": {
     "name": "症状と証の折衷から導かれる漢方薬名（allowed_formulasから選ぶ）",
-    "reason": "症状と証の両方を考慮したうえで、全体のバランスから最も妥当と判断した理由を説明。例：『気虚とストレスの両方が関係しているため、気を補いながら気の巡りを整える補中益気湯を選びました。』妊婦禁忌の場合のみ『妊婦禁忌』と明記。",
+    "reason": "症状・証の双方をどう両立したかを説明。妊婦禁忌の場合のみ『妊婦禁忌』と明記。",
     "is_contraindicated_pregnancy": true または false
   },
   "guidance": {
-    "療養の要点": "漢方薬剤師としての専門的な養生指導。一般的な助言（例：睡眠を取りましょう）は避け、処方の薬効・証に基づく具体的な方法を述べる。例：『冷たい飲食を避け、温かい汁物を中心にする』『気滞傾向があるため、深呼吸や軽い運動で気を巡らせる』など。",
+    "療養の要点": "処方の薬効・証に基づく具体的な養生（食事、温冷、運動、入浴など）。一般論は避ける。",
     "おすすめ薬膳食材": [
-      {"name": "食材名", "reason": "選定理由（処方や証との関連を具体的に）"},
-      {"name": "食材名", "reason": "選定理由"},
-      {"name": "食材名", "reason": "選定理由"},
-      {"name": "食材名", "reason": "選定理由"},
-      {"name": "食材名", "reason": "選定理由"}
+      {"name": "食材名", "reason": "処方や証との関連を具体的に"},
+      {"name": "食材名", "reason": "理由"},
+      {"name": "食材名", "reason": "理由"},
+      {"name": "食材名", "reason": "理由"},
+      {"name": "食材名", "reason": "理由"}
     ]
   }
 }
 
 【出力安定化ルール】
 - 同じ入力には同じ出力を返すこと。
-- 複数候補が同等の場合は allowed_formulas リスト内でインデックスが小さい方を採用。
-- 妊婦禁忌の処方（例：桃核承気湯、桂枝茯苓丸、防風通聖散、大黄牡丹皮湯、大柴胡湯など）の場合のみ reason に「妊婦禁忌」と明記する。
+- 複数候補が同等の場合は allowed_formulas の配列順で**インデックスが小さい方**を採用する（決定性）。
+- 「formula_symptom」「formula_sho」「formula_mixed」の **name は互いに異なる** こと（重複禁止）。
+  - 最適解が同一になる場合は、allowed_formulas の範囲で**次点**を選ぶ。
+- 妊婦禁忌の処方（例：桃核承気湯、桂枝茯苓丸、防風通聖散、大黄牡丹皮湯、大柴胡湯など）の場合のみ、
+  reason に『妊婦禁忌』と明記し、is_contraindicated_pregnancy を true にする。
 - JSON以外の文字を絶対に出力しない。
 
-+さらに次を厳守すること：
-- 体質スコアのうち **50点以上の軸（上位軸）** を必ず考慮し、reason に **「どの軸（例：陽熱・水滞・気虚）」に対して薬効が対応するか** を明記する。
-- 「症状優先」でも、**上位軸と明らかに矛盾する処方**は選ばない（選ぶ場合はその矛盾をどう担保するかを具体的に説明）。
-- 「折衷案」は **上位1〜2軸** を同時にカバーする処方を第一候補とする（例：陽熱＋水滞）。
+【体質スコア（0〜100）の扱い】
+- **上位軸＝スコア50点以上** は必ず考慮し、各 reason に **どの軸（例：陽熱・水滞・気虚）に対してどう効くか** を明記する。
+- 「症状優先」でも、**上位軸と明確に矛盾する処方は選ばない**。やむを得ず選ぶ場合は、その矛盾をどう担保するかを具体的に説明する。
+- 「折衷案」は **上位1〜2軸** を同時にカバーできる処方を第一候補とする。
+
+【症状→病理の補助規則（誤選択防止）】
+- 「雨の日に悪化」「湿気」「天気が悪い」「むくみ」「頭重感」などがある場合は **水滞** を強く示唆。
+  → 五苓散、苓桂朮甘湯、平胃散、防已黄耆湯 などの**水のさばき**を優先的に検討。
+- 「顔や頭部の赤み・ほてり・炎症・ニキビ・熱感」が目立つ場合は **陽熱** を示唆。
+  → 清上防風湯、荊芥連翹湯、黄連解毒湯、温清飲、竜胆瀉肝湯 などを候補に含める。
+- 「外感（悪寒発熱・項背のこわばり・急性）」が主で、湿や熱の所見が薄い場合のみ **葛根湯等** を第一候補とする。
+- 気虚が高得点（≥50）で水滞が中等度（≥30）のときは、**気虚に由来する水代謝低下**を考慮。
+  → 苓桂朮甘湯や **補中益気湯＋五苓散（併用の方向性）** を折衷候補として検討。
+
+【allowed_formulas の使い方】
+- 処方名は **allowed_formulas に含まれる名称に限る**。外部の別名・シリーズ名・略称を作らない。
+- allowed_formulas 外しか妥当でない場合でも、**最も近い適切な候補**を allowed_formulas 内から選ぶ。
 
 """
 
@@ -193,13 +208,23 @@ def safe_json(content: str):
 # ====== /analyze：フロントからの送信を受け→3剤＋コメントを返す ======
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    # JSON/フォームの両対応
     try:
         data = request.get_json() if request.is_json else request.form.to_dict()
     except Exception as e:
         return jsonify({"error": f"データ受信エラー: {str(e)}"}), 400
 
+    def names_triplet(obj: dict):
+        a = (obj.get("formula_symptom") or {}).get("name") or ""
+        b = (obj.get("formula_sho") or {}).get("name") or ""
+        c = (obj.get("formula_mixed") or {}).get("name") or ""
+        return a, b, c
+
+    def has_dup(a, b, c):
+        s = [x for x in (a, b, c) if x]
+        return len(s) != len(set(s))
+
     try:
+        # 1回目の生成
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": build_user_prompt(data)},
@@ -207,17 +232,75 @@ def analyze():
         raw = call_openai(messages)
         parsed = safe_json(raw)
 
-        # 許可リスト外の処方を無効化するかはスイッチで制御（既定OFF）
+        # ---- 許可外チェック ----
         if isinstance(parsed, dict) and ENFORCE_ALLOWED:
-            for key in ("formula_symptom","formula_sho","formula_mixed"):
+            for key in ("formula_symptom", "formula_sho", "formula_mixed"):
                 if parsed.get(key) and parsed[key].get("name") not in ALLOWED:
                     parsed[key]["name"] = ""
                     parsed[key]["reason"] = "allowed_formulas外だったため無効化"
 
+        # ---- 重複・空欄チェック ----
+        if isinstance(parsed, dict):
+            a, b, c = names_triplet(parsed)
+            dup = has_dup(a, b, c)
+            need_retry = dup or (not a) or (not b) or (not c)
+
+            if need_retry:
+                used = [x for x in (a, b, c) if x]
+                ban_text = "、".join(used) if used else "（なし）"
+
+                repair_msg = f"""
+前回の出力では重複や空欄がありました。
+以下を厳守して、同じJSON形式で再出力してください。
+
+- 「formula_symptom」「formula_sho」「formula_mixed」はすべて**異なる3剤**にする（重複禁止）
+- 前回使用した処方名：{ban_text} は**今回使用禁止**
+- 各 reason に、症状・証・上位軸（50点以上があれば）との対応を必ず説明
+- allowed_formulas の範囲で最適な別処方を選び直す
+                """.strip()
+
+                messages_retry = [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": build_user_prompt(data)},
+                    {"role": "user", "content": repair_msg},
+                ]
+                raw2 = call_openai(messages_retry)
+                parsed2 = safe_json(raw2)
+
+                if isinstance(parsed2, dict) and ENFORCE_ALLOWED:
+                    for key in ("formula_symptom", "formula_sho", "formula_mixed"):
+                        if parsed2.get(key) and parsed2[key].get("name") not in ALLOWED:
+                            parsed2[key]["name"] = ""
+                            parsed2[key]["reason"] = "allowed_formulas外だったため無効化"
+
+                # 最終チェック：それでも重複なら後順位を空欄で返す
+                if isinstance(parsed2, dict):
+                    a2, b2, c2 = names_triplet(parsed2)
+                    if has_dup(a2, b2, c2):
+                        seen, out = set(), {}
+                        for k in ("formula_symptom", "formula_sho", "formula_mixed"):
+                            item = parsed2.get(k) or {}
+                            nm = item.get("name") or ""
+                            if nm and nm not in seen:
+                                out[k] = item
+                                seen.add(nm)
+                            else:
+                                out[k] = {
+                                    "name": "",
+                                    "reason": "重複回避のため空欄（別処方の提示が必要）",
+                                    "is_contraindicated_pregnancy": False,
+                                }
+                        return jsonify({
+                            **parsed2,
+                            "formula_symptom": out["formula_symptom"],
+                            "formula_sho": out["formula_sho"],
+                            "formula_mixed": out["formula_mixed"],
+                        })
+                    return jsonify(parsed2)
+
         return jsonify(parsed)
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": f"サーバ処理エラー: {str(e)}"}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), debug=True)
